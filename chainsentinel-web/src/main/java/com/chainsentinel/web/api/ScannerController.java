@@ -21,10 +21,13 @@ public class ScannerController {
     }
 
     @PostMapping("/run")
-    public ScanRunResponse run(@RequestParam(name = "times", defaultValue = "1") @Min(1) Integer times) {
+    public ScanRunResponse run(
+            @RequestParam(name = "times", defaultValue = "1") @Min(1) Integer times,
+            @RequestParam(name = "full", defaultValue = "false") Boolean full
+    ) {
         int inserted = 0;
         for (int i = 0; i < times; i++) {
-            inserted += scannerService.runOnce();
+            inserted += scannerService.runOnce(Boolean.TRUE.equals(full));
         }
         return new ScanRunResponse(inserted, Instant.now());
     }
@@ -32,5 +35,3 @@ public class ScannerController {
     public record ScanRunResponse(int insertedCount, Instant executedAt) {
     }
 }
-
-

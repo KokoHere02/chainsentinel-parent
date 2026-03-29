@@ -2,6 +2,5 @@ package com.chainsentinel.core.service;
 
 public interface ScannerService {
 
-    int runOnce();
+    int runOnce(boolean full);
 }
-

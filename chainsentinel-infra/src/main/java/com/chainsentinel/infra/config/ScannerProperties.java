@@ -12,6 +12,9 @@ public class ScannerProperties {
     private int windowSize = 200;
     private int confirmRequired = 12;
     private long initialStartBlock = 0;
+  private int rpcRetryMax = 3;
+  private long rpcRetryBackoffMs = 300;
+  private boolean fullEthScan = false;
 
     public boolean isEnabled() {
         return enabled;
@@ -68,4 +71,28 @@ public class ScannerProperties {
     public void setInitialStartBlock(long initialStartBlock) {
         this.initialStartBlock = initialStartBlock;
     }
+
+  public int getRpcRetryMax() {
+    return rpcRetryMax;
+  }
+
+  public void setRpcRetryMax(int rpcRetryMax) {
+    this.rpcRetryMax = rpcRetryMax;
+  }
+
+  public long getRpcRetryBackoffMs() {
+    return rpcRetryBackoffMs;
+  }
+
+  public void setRpcRetryBackoffMs(long rpcRetryBackoffMs) {
+    this.rpcRetryBackoffMs = rpcRetryBackoffMs;
+  }
+
+  public boolean isFullEthScan() {
+    return fullEthScan;
+  }
+
+  public void setFullEthScan(boolean fullEthScan) {
+    this.fullEthScan = fullEthScan;
+  }
 }
