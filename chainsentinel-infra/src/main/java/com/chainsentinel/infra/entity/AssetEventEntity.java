@@ -11,7 +11,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
-import java.math.BigDecimal;
 import java.time.Instant;
 
 @Entity
@@ -60,8 +59,8 @@ public class AssetEventEntity {
     @Column(name = "symbol", length = 32)
     private String symbol;
 
-    @Column(name = "amount", precision = 65, scale = 0)
-    private BigDecimal amount;
+    @Column(name = "amount", length = 80)
+    private String amount;
 
     @Column(name = "decimals")
     private Integer decimals;
@@ -171,11 +170,11 @@ public class AssetEventEntity {
         this.symbol = symbol;
     }
 
-    public BigDecimal getAmount() {
+    public String getAmount() {
         return amount;
     }
 
-    public void setAmount(BigDecimal amount) {
+    public void setAmount(String amount) {
         this.amount = amount;
     }
 
@@ -219,4 +218,3 @@ public class AssetEventEntity {
         this.ingestedAt = ingestedAt;
     }
 }
-

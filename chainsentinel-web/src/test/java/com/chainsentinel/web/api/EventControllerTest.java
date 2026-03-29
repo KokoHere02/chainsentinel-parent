@@ -13,7 +13,6 @@ import com.chainsentinel.core.model.TokenType;
 import com.chainsentinel.core.service.EventQueryService;
 import com.chainsentinel.core.service.dto.EventQuery;
 import com.chainsentinel.core.service.dto.EventView;
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -49,7 +48,7 @@ class EventControllerTest {
                 "0xto",
                 TokenType.ETH,
                 "ETH",
-                new BigDecimal("1.0"),
+                "1000000000000000000",
                 EventStatus.CONFIRMED,
                 12,
                 Instant.parse("2026-03-28T12:00:00Z")
@@ -82,3 +81,6 @@ class EventControllerTest {
         org.junit.jupiter.api.Assertions.assertEquals(PageRequest.of(1, 5, Sort.by(Sort.Direction.DESC, "blockNumber")), p.getValue());
     }
 }
+
+
+

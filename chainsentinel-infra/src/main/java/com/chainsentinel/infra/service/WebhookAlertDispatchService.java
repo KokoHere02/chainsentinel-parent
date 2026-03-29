@@ -154,3 +154,4 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
         return error.length() > 1000 ? error.substring(0, 1000) : error;
     }
 }
+

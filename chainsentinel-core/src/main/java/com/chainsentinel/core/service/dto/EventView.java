@@ -2,7 +2,6 @@ package com.chainsentinel.core.service.dto;
 
 import com.chainsentinel.core.model.EventStatus;
 import com.chainsentinel.core.model.TokenType;
-import java.math.BigDecimal;
 import java.time.Instant;
 
 public record EventView(
@@ -16,10 +15,9 @@ public record EventView(
         String toAddress,
         TokenType tokenType,
         String symbol,
-        BigDecimal amount,
+        String amount,
         EventStatus status,
         Integer confirmations,
         Instant occurredAt
 ) {
 }
-

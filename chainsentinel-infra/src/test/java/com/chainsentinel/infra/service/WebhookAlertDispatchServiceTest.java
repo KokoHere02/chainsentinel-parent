@@ -20,7 +20,6 @@ import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.repository.AlertEventRepository;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.repository.AssetEventRepository;
-import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -134,7 +133,7 @@ class WebhookAlertDispatchServiceTest {
         event.setTxHash("0xhash");
         event.setFromAddress("0xfrom");
         event.setToAddress("0xto");
-        event.setAmount(new BigDecimal("1"));
+        event.setAmount("1");
         event.setTokenType(TokenType.ETH);
         event.setOccurredAt(Instant.parse("2026-03-28T10:00:00Z"));
 
@@ -155,3 +154,4 @@ class WebhookAlertDispatchServiceTest {
         assertTrue(saved.getSentAt() != null);
     }
 }
+
