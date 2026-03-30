@@ -1,44 +1,45 @@
 package com.chainsentinel.infra.service;
 
-import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.infra.entity.AlertEventEntity;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
 import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.repository.AlertEventRepository;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
-import com.chainsentinel.infra.repository.MonitorAddressRepository;
+import com.chainsentinel.infra.rule.EventRuleConditionParser;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
 public class AddressAlertMatcher {
 
-    private final MonitorAddressRepository monitorAddressRepository;
+    private static final Logger log = LoggerFactory.getLogger(AddressAlertMatcher.class);
+
     private final AlertRuleRepository alertRuleRepository;
     private final AlertEventRepository alertEventRepository;
+    private final EventRuleConditionParser ruleConditionParser;
 
     public AddressAlertMatcher(
-            MonitorAddressRepository monitorAddressRepository,
             AlertRuleRepository alertRuleRepository,
-            AlertEventRepository alertEventRepository
+            AlertEventRepository alertEventRepository,
+            EventRuleConditionParser ruleConditionParser
     ) {
-        this.monitorAddressRepository = monitorAddressRepository;
         this.alertRuleRepository = alertRuleRepository;
         this.alertEventRepository = alertEventRepository;
+        this.ruleConditionParser = ruleConditionParser;
     }
 
     public void evaluate(AssetEventEntity event) {
         if (event.getId() == null) {
             return;
         }
-        boolean hitFrom = monitorAddressRepository.existsByChainAndAddressAndEnabledTrue(event.getChain(), lower(event.getFromAddress()));
-        boolean hitTo = monitorAddressRepository.existsByChainAndAddressAndEnabledTrue(event.getChain(), lower(event.getToAddress()));
-        if (!hitFrom && !hitTo) {
-            return;
-        }
 
-        List<AlertRuleEntity> rules = alertRuleRepository.findByTypeAndEnabledTrue(AlertRuleType.ADDRESS);
+        List<AlertRuleEntity> rules = alertRuleRepository.findByEnabledTrue();
         for (AlertRuleEntity rule : rules) {
+            if (!isMatched(rule, event)) {
+                continue;
+            }
             if (alertEventRepository.existsByRuleIdAndAssetEventId(rule.getId(), event.getId())) {
                 continue;
             }
@@ -52,7 +53,12 @@ public class AddressAlertMatcher {
         }
     }
 
-    private String lower(String value) {
-        return value == null ? null : value.toLowerCase();
+    private boolean isMatched(AlertRuleEntity rule, AssetEventEntity event) {
+        try {
+            return ruleConditionParser.matches(rule.getConditionJson(), event);
+        } catch (IllegalArgumentException ex) {
+            log.warn("Skip invalid rule id={}: {}", rule.getId(), ex.getMessage());
+            return false;
+        }
     }
 }

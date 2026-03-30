@@ -5,9 +5,7 @@ import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import java.util.Map;
+import com.chainsentinel.infra.rule.EventRuleConditionParser;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -15,11 +13,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class DefaultAlertRuleService implements AlertRuleService {
 
     private final AlertRuleRepository alertRuleRepository;
-    private final ObjectMapper objectMapper;
+    private final EventRuleConditionParser ruleConditionParser;
 
-    public DefaultAlertRuleService(AlertRuleRepository alertRuleRepository, ObjectMapper objectMapper) {
+    public DefaultAlertRuleService(AlertRuleRepository alertRuleRepository, EventRuleConditionParser ruleConditionParser) {
         this.alertRuleRepository = alertRuleRepository;
-        this.objectMapper = objectMapper;
+        this.ruleConditionParser = ruleConditionParser;
     }
 
     @Override
@@ -30,7 +28,7 @@ public class DefaultAlertRuleService implements AlertRuleService {
         entity.setType(command.type());
         entity.setSeverity(command.severity());
         entity.setEnabled(Boolean.TRUE.equals(command.enabled()));
-        entity.setConditionJson(toJson(command.condition()));
+        entity.setConditionJson(ruleConditionParser.serialize(command.condition()));
 
         AlertRuleEntity saved = alertRuleRepository.save(entity);
         return new AlertRuleView(
@@ -41,14 +39,5 @@ public class DefaultAlertRuleService implements AlertRuleService {
                 saved.getSeverity(),
                 saved.getEnabled()
         );
-    }
-
-    private String toJson(Map<String, Object> condition) {
-        Map<String, Object> src = condition == null ? Map.of() : condition;
-        try {
-            return objectMapper.writeValueAsString(src);
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException("Invalid condition json", e);
-        }
     }
 }

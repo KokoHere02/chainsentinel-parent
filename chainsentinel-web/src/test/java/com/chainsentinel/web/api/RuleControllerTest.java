@@ -12,22 +12,29 @@ import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.service.AlertRuleService;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-@WebMvcTest(RuleController.class)
+@ExtendWith(MockitoExtension.class)
 class RuleControllerTest {
 
-    @Autowired
+    @Mock
+    private AlertRuleService alertRuleService;
+
     private MockMvc mockMvc;
 
-    @MockBean
-    private AlertRuleService alertRuleService;
+    @BeforeEach
+    void setUp() {
+        RuleController controller = new RuleController(alertRuleService);
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
 
     @Test
     void shouldCreateRuleWithDefaultEnabled() throws Exception {
@@ -40,7 +47,15 @@ class RuleControllerTest {
                                 {
                                   "name": "r1",
                                   "type": "ADDRESS",
-                                  "condition": {"k":"v"},
+                                  "condition": {
+                                    "version": 1,
+                                    "type": "EVENT",
+                                    "condition": {
+                                      "all": [
+                                        {"field": "chain", "op": "eq", "value": "ETH"}
+                                      ]
+                                    }
+                                  },
                                   "severity": "HIGH"
                                 }
                                 """))
@@ -56,15 +71,17 @@ class RuleControllerTest {
         org.junit.jupiter.api.Assertions.assertEquals(AlertRuleType.ADDRESS, cmd.type());
         org.junit.jupiter.api.Assertions.assertEquals("HIGH", cmd.severity());
         org.junit.jupiter.api.Assertions.assertEquals(true, cmd.enabled());
+        org.junit.jupiter.api.Assertions.assertEquals(1, cmd.condition().getVersion());
     }
 
     @Test
-    void shouldReturn400WhenTypeMissing() throws Exception {
+    void shouldReturn400WhenConditionMissing() throws Exception {
         mockMvc.perform(post("/api/rules")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                   "name": "r1",
+                                  "type": "ADDRESS",
                                   "severity": "HIGH"
                                 }
                                 """))
