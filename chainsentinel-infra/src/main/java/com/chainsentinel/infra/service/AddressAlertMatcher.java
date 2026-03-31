@@ -16,6 +16,8 @@ public class AddressAlertMatcher {
 
     private static final Logger log = LoggerFactory.getLogger(AddressAlertMatcher.class);
 
+    private static final String SEND_STATUS_PENDING = "PENDING";
+
     private final AlertRuleRepository alertRuleRepository;
     private final AlertEventRepository alertEventRepository;
     private final EventRuleConditionParser ruleConditionParser;
@@ -41,15 +43,23 @@ public class AddressAlertMatcher {
                 continue;
             }
             if (alertEventRepository.existsByRuleIdAndAssetEventId(rule.getId(), event.getId())) {
+                log.debug("alert.match.duplicate_skip ruleId={} assetEventId={}", rule.getId(), event.getId());
                 continue;
             }
+
             AlertEventEntity alert = new AlertEventEntity();
             alert.setRuleId(rule.getId());
             alert.setAssetEventId(event.getId());
             alert.setSeverity(rule.getSeverity());
-            alert.setSendStatus("PENDING");
+            alert.setSendStatus(SEND_STATUS_PENDING);
             alert.setRetryCount(0);
             alertEventRepository.save(alert);
+
+            log.info("alert.match.created alertId={} ruleId={} assetEventId={} severity={}",
+                    alert.getId(),
+                    alert.getRuleId(),
+                    alert.getAssetEventId(),
+                    alert.getSeverity());
         }
     }
 
@@ -57,7 +67,7 @@ public class AddressAlertMatcher {
         try {
             return ruleConditionParser.matches(rule.getConditionJson(), event);
         } catch (IllegalArgumentException ex) {
-            log.warn("Skip invalid rule id={}: {}", rule.getId(), ex.getMessage());
+            log.warn("alert.match.invalid_rule_skip ruleId={} error={}", rule.getId(), ex.getMessage());
             return false;
         }
     }

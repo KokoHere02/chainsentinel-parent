@@ -3,8 +3,6 @@ package com.chainsentinel.infra.service;
 import com.chainsentinel.core.service.AlertDispatchService;
 import com.chainsentinel.infra.config.AlertProperties;
 import com.chainsentinel.infra.entity.AlertEventEntity;
-import com.chainsentinel.infra.entity.AlertRuleEntity;
-import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.repository.AlertEventRepository;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.repository.AssetEventRepository;
@@ -30,6 +28,10 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
 
     private static final Logger log = LoggerFactory.getLogger(WebhookAlertDispatchService.class);
 
+    private static final String STATUS_PENDING = "PENDING";
+    private static final String STATUS_SENT = "SENT";
+    private static final String STATUS_FAILED = "FAILED";
+
     private final AlertProperties alertProperties;
     private final AlertEventRepository alertEventRepository;
     private final AlertRuleRepository alertRuleRepository;
@@ -52,15 +54,26 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
     @Transactional
     public int dispatchPending() {
         if (!alertProperties.isEnabled() || !StringUtils.hasText(alertProperties.getWebhookUrl())) {
+            log.debug("alert.dispatch.batch.skip enabled={} webhookConfigured={}",
+                    alertProperties.isEnabled(),
+                    StringUtils.hasText(alertProperties.getWebhookUrl()));
             return 0;
         }
-        List<AlertEventEntity> pending = alertEventRepository.findTop100BySendStatusOrderByIdAsc("PENDING");
+
+        List<AlertEventEntity> pending = alertEventRepository.findTop100BySendStatusOrderByIdAsc(STATUS_PENDING);
+        if (pending.isEmpty()) {
+            log.debug("alert.dispatch.batch.empty");
+            return 0;
+        }
+
         int success = 0;
         for (AlertEventEntity alert : pending) {
             if (doSend(alert)) {
                 success++;
             }
         }
+
+        log.info("alert.dispatch.batch.done fetched={} sent={} failed={}", pending.size(), success, pending.size() - success);
         return success;
     }
 
@@ -69,18 +82,27 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
     public boolean retryOne(Long alertId) {
         Optional<AlertEventEntity> optional = alertEventRepository.findById(alertId);
         if (optional.isEmpty()) {
+            log.warn("alert.dispatch.retry.not_found alertId={}", alertId);
             return false;
         }
+
         AlertEventEntity alert = optional.get();
-        if ("SENT".equalsIgnoreCase(alert.getSendStatus())) {
+        if (STATUS_SENT.equalsIgnoreCase(alert.getSendStatus())) {
+            log.info("alert.dispatch.retry.skip_sent alertId={}", alertId);
             return true;
         }
+
         if (alert.getRetryCount() != null && alert.getRetryCount() >= alertProperties.getRetryMax()) {
-            alert.setSendStatus("FAILED");
+            alert.setSendStatus(STATUS_FAILED);
             alertEventRepository.save(alert);
+            log.warn("alert.dispatch.retry.force_failed alertId={} retry={} retryMax={}",
+                    alert.getId(), alert.getRetryCount(), alertProperties.getRetryMax());
             return false;
         }
-        return doSend(alert);
+
+        boolean ok = doSend(alert);
+        log.info("alert.dispatch.retry.done alertId={} sent={}", alertId, ok);
+        return ok;
     }
 
     private boolean doSend(AlertEventEntity alert) {
@@ -93,13 +115,17 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
                     new HttpEntity<>(payload, headers),
                     String.class
             );
+
             if (response.getStatusCode().is2xxSuccessful()) {
-                alert.setSendStatus("SENT");
+                alert.setSendStatus(STATUS_SENT);
                 alert.setLastError(null);
                 alert.setSentAt(Instant.now());
                 alertEventRepository.save(alert);
+                log.info("alert.dispatch.send.success alertId={} statusCode={}",
+                        alert.getId(), response.getStatusCode().value());
                 return true;
             }
+
             return markFailure(alert, "HTTP " + response.getStatusCode().value());
         } catch (RestClientException e) {
             return markFailure(alert, e.getMessage());
@@ -135,15 +161,16 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
     private boolean markFailure(AlertEventEntity alert, String error) {
         int retry = alert.getRetryCount() == null ? 0 : alert.getRetryCount();
         retry++;
+
         alert.setRetryCount(retry);
         alert.setLastError(trimError(error));
-        if (retry >= alertProperties.getRetryMax()) {
-            alert.setSendStatus("FAILED");
-        } else {
-            alert.setSendStatus("PENDING");
-        }
+
+        String nextStatus = retry >= alertProperties.getRetryMax() ? STATUS_FAILED : STATUS_PENDING;
+        alert.setSendStatus(nextStatus);
         alertEventRepository.save(alert);
-        log.warn("Alert dispatch failed, id={}, retry={}, error={}", alert.getId(), retry, alert.getLastError());
+
+        log.warn("alert.dispatch.send.failed alertId={} retry={} retryMax={} nextStatus={} error={}",
+                alert.getId(), retry, alertProperties.getRetryMax(), nextStatus, alert.getLastError());
         return false;
     }
 
@@ -154,4 +181,3 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
         return error.length() > 1000 ? error.substring(0, 1000) : error;
     }
 }
-
