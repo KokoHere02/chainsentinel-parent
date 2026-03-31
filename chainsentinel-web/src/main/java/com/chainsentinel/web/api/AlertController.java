@@ -1,9 +1,13 @@
 package com.chainsentinel.web.api;
 
+import java.util.Map;
+
 import com.chainsentinel.core.service.AlertDispatchService;
 import com.chainsentinel.core.service.AlertQueryService;
 import com.chainsentinel.core.service.dto.AlertQuery;
 import com.chainsentinel.core.service.dto.AlertView;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -11,10 +15,12 @@ import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/alerts")
 public class AlertController {
@@ -44,6 +50,14 @@ public class AlertController {
         boolean ok = alertDispatchService.retryOne(id);
         return new RetryResponse(ok);
     }
+
+  // todo 待增强 微服务？还是直接接入三方 飞书等
+  @PostMapping("/handler")
+  public Map<String, String> handlerAlert(@RequestBody String json) {
+    // 需要暂存幂等key
+    log.info("handler Alert Received : {}", json);
+    return Map.of("code", "200");
+  }
 
     public record RetryResponse(boolean success) {
     }

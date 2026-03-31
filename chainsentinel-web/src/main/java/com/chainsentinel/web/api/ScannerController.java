@@ -1,8 +1,11 @@
 package com.chainsentinel.web.api;
 
+import java.time.Instant;
+
 import com.chainsentinel.core.service.ScannerService;
 import jakarta.validation.constraints.Min;
-import java.time.Instant;
+
+import org.springframework.context.annotation.Profile;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +23,7 @@ public class ScannerController {
         this.scannerService = scannerService;
     }
 
+  @Profile("dev")
     @PostMapping("/run")
     public ScanRunResponse run(
             @RequestParam(name = "times", defaultValue = "1") @Min(1) Integer times,

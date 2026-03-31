@@ -107,7 +107,8 @@ public class EthereumScannerService implements ScannerService {
         Web3j web3j = Web3j.build(new HttpService(runtime.rpcUrl()));
         try {
             long latest = rpcCallWithRetry("eth_blockNumber", () ->
-                    web3j.ethBlockNumber().send().getBlockNumber().longValueExact());
+              web3j.ethBlockNumber().send().getBlockNumber().longValueExact()
+            );
             ScanWindow window = resolveWindow(latest, runtime);
             if (window.fromBlock() > window.toBlock()) {
                 return 0;
