@@ -15,6 +15,7 @@
         <module>chainsentinel-common</module>
         <module>chainsentinel-core</module>
         <module>chainsentinel-infra</module>
+        <module>chainsentinel-price</module>
         <module>chainsentinel-web</module>
     </modules>
 
@@ -65,5 +66,3 @@
         </pluginManagement>
     </build>
 </project>
-
-
