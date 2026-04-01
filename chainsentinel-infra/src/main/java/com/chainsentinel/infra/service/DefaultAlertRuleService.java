@@ -1,5 +1,6 @@
 package com.chainsentinel.infra.service;
 
+import com.chainsentinel.core.exception.RuleGovernanceException;
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.service.AlertRuleService;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
@@ -56,6 +57,6 @@ public class DefaultAlertRuleService implements AlertRuleService {
             return;
         }
         log.warn("rule.governance.reject type={} enabledTypes={}", type, ENABLED_RULE_TYPES);
-        throw new IllegalArgumentException("Rule type is disabled by governance: " + type);
+        throw new RuleGovernanceException(type);
     }
 }

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import com.chainsentinel.core.exception.RuleGovernanceException;
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.rule.model.EventRuleCondition;
 import com.chainsentinel.core.rule.model.EventRuleConditionItem;
@@ -114,7 +115,7 @@ class DefaultAlertRuleServiceTest {
                 ))
         );
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.create(new AlertRuleCreateCommand(
+        RuleGovernanceException ex = assertThrows(RuleGovernanceException.class, () -> service.create(new AlertRuleCreateCommand(
                 "freq-rule",
                 AlertRuleType.FREQUENCY,
                 spec,
@@ -123,6 +124,8 @@ class DefaultAlertRuleServiceTest {
         )));
 
         assertEquals("Rule type is disabled by governance: FREQUENCY", ex.getMessage());
+        assertEquals("RULE_GOVERNANCE_REJECTED", ex.getCode());
+        assertEquals(400, ex.getStatus());
     }
 
     @Test
