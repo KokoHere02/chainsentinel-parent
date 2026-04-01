@@ -1,6 +1,8 @@
 package com.chainsentinel.infra.service;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -32,7 +34,7 @@ class DefaultAlertRuleServiceTest {
     private final EventRuleConditionParser parser = new EventRuleConditionParser(new ObjectMapper());
 
     @Test
-    void shouldCreateRuleAndSerializeConditionObject() throws Exception {
+    void shouldCreateAddressRuleAndSerializeConditionObject() throws Exception {
         DefaultAlertRuleService service = new DefaultAlertRuleService(alertRuleRepository, parser);
 
         when(alertRuleRepository.save(any(AlertRuleEntity.class))).thenAnswer(invocation -> {
@@ -61,12 +63,66 @@ class DefaultAlertRuleServiceTest {
 
         AlertRuleView view = service.create(command);
 
-//        assertEquals(7L, view.id());
         assertEquals("address-watch", view.name());
         assertEquals(AlertRuleType.ADDRESS, view.type());
         assertEquals("HIGH", view.severity());
         assertTrue(view.enabled());
         assertEquals(1, new ObjectMapper().readTree(view.conditionJson()).get("version").asInt());
+    }
+
+    @Test
+    void shouldCreateAmountRuleAndKeepAmountType() {
+        DefaultAlertRuleService service = new DefaultAlertRuleService(alertRuleRepository, parser);
+
+        when(alertRuleRepository.save(any(AlertRuleEntity.class))).thenAnswer(invocation -> {
+            AlertRuleEntity entity = invocation.getArgument(0);
+            ReflectionTestUtils.setField(entity, "id", 11L);
+            return entity;
+        });
+
+        EventRuleSpec spec = new EventRuleSpec(
+                1,
+                "EVENT",
+                new EventRuleCondition(List.of(
+                        new EventRuleConditionItem(EventRuleField.AMOUNT, EventRuleOperator.GTE, "1000000000000000000")
+                ))
+        );
+
+        AlertRuleView view = service.create(new AlertRuleCreateCommand(
+                "amount-watch",
+                AlertRuleType.AMOUNT,
+                spec,
+                "CRITICAL",
+                true
+        ));
+
+        assertEquals("amount-watch", view.name());
+        assertEquals(AlertRuleType.AMOUNT, view.type());
+        assertEquals("CRITICAL", view.severity());
+        assertTrue(view.enabled());
+    }
+
+    @Test
+    void shouldRejectFrequencyRuleByGovernance() {
+        DefaultAlertRuleService service = new DefaultAlertRuleService(alertRuleRepository, parser);
+
+        EventRuleSpec spec = new EventRuleSpec(
+                1,
+                "EVENT",
+                new EventRuleCondition(List.of(
+                        new EventRuleConditionItem(EventRuleField.CHAIN, EventRuleOperator.EQ, "ETH")
+                ))
+        );
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.create(new AlertRuleCreateCommand(
+                "freq-rule",
+                AlertRuleType.FREQUENCY,
+                spec,
+                "MEDIUM",
+                true
+        )));
+
+        assertEquals("Rule type is disabled by governance: FREQUENCY", ex.getMessage());
     }
 
     @Test

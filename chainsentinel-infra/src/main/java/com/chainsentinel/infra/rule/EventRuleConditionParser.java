@@ -1,13 +1,14 @@
 package com.chainsentinel.infra.rule;
 
-import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.core.rule.model.EventRuleCondition;
 import com.chainsentinel.core.rule.model.EventRuleConditionItem;
 import com.chainsentinel.core.rule.model.EventRuleField;
 import com.chainsentinel.core.rule.model.EventRuleOperator;
 import com.chainsentinel.core.rule.model.EventRuleSpec;
+import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -112,10 +113,7 @@ public class EventRuleConditionParser {
 
         if (op == EventRuleOperator.IN || op == EventRuleOperator.NOT_IN) {
             List<?> values = toList(item.getValue());
-            String actual = normalizeText(item.getField(), toText(left));
-            boolean contains = values.stream()
-                    .map(v -> normalizeText(item.getField(), toText(v)))
-                    .anyMatch(actual::equals);
+            boolean contains = containsByField(item.getField(), left, values);
             return (op == EventRuleOperator.IN) == contains;
         }
 
@@ -124,9 +122,7 @@ public class EventRuleConditionParser {
             return (op == EventRuleOperator.EQ) == equal;
         }
 
-        BigDecimal actual = toDecimal(left);
-        BigDecimal expected = toDecimal(item.getValue());
-        int cmp = actual.compareTo(expected);
+        int cmp = compareByField(item.getField(), left, item.getValue());
         return switch (op) {
             case GT -> cmp > 0;
             case GTE -> cmp >= 0;
@@ -136,11 +132,31 @@ public class EventRuleConditionParser {
         };
     }
 
+    private boolean containsByField(EventRuleField field, Object left, List<?> values) {
+        if (field == EventRuleField.AMOUNT) {
+            BigInteger actual = toAmountValue(left);
+            return values.stream().map(this::toAmountValue).anyMatch(actual::equals);
+        }
+        String actual = normalizeText(field, toText(left));
+        return values.stream().map(v -> normalizeText(field, toText(v))).anyMatch(actual::equals);
+    }
+
     private boolean equalsByField(EventRuleField field, Object left, Object right) {
         if (field == EventRuleField.AMOUNT) {
-            return toDecimal(left).compareTo(toDecimal(right)) == 0;
+            return toAmountValue(left).compareTo(toAmountValue(right)) == 0;
         }
         return normalizeText(field, toText(left)).equals(normalizeText(field, toText(right)));
+    }
+
+    private int compareByField(EventRuleField field, Object left, Object right) {
+        if (field == EventRuleField.AMOUNT) {
+            return toAmountValue(left).compareTo(toAmountValue(right));
+        }
+        return toDecimal(left).compareTo(toDecimal(right));
+    }
+
+    private BigInteger toAmountValue(Object value) {
+        return AmountComparisonValueConverter.toComparisonValue(value);
     }
 
     private Object fieldValue(EventRuleField field, AssetEventEntity event) {

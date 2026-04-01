@@ -12,6 +12,7 @@ import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.service.AlertRuleService;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,7 +38,7 @@ class RuleControllerTest {
     }
 
     @Test
-    void shouldCreateRuleWithDefaultEnabled() throws Exception {
+    void shouldCreateAddressRuleWithDefaultEnabled() throws Exception {
         when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
                 .thenReturn(new AlertRuleView(2L, "r1", AlertRuleType.ADDRESS, "{}", "HIGH", true));
 
@@ -67,11 +68,45 @@ class RuleControllerTest {
         ArgumentCaptor<AlertRuleCreateCommand> captor = ArgumentCaptor.forClass(AlertRuleCreateCommand.class);
         verify(alertRuleService).create(captor.capture());
         AlertRuleCreateCommand cmd = captor.getValue();
-        org.junit.jupiter.api.Assertions.assertEquals("r1", cmd.name());
-        org.junit.jupiter.api.Assertions.assertEquals(AlertRuleType.ADDRESS, cmd.type());
-        org.junit.jupiter.api.Assertions.assertEquals("HIGH", cmd.severity());
-        org.junit.jupiter.api.Assertions.assertEquals(true, cmd.enabled());
-        org.junit.jupiter.api.Assertions.assertEquals(1, cmd.condition().getVersion());
+        Assertions.assertEquals("r1", cmd.name());
+        Assertions.assertEquals(AlertRuleType.ADDRESS, cmd.type());
+        Assertions.assertEquals("HIGH", cmd.severity());
+        Assertions.assertEquals(true, cmd.enabled());
+        Assertions.assertEquals(1, cmd.condition().getVersion());
+    }
+
+    @Test
+    void shouldCreateAmountRule() throws Exception {
+        when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
+                .thenReturn(new AlertRuleView(3L, "amount-rule", AlertRuleType.AMOUNT, "{}", "CRITICAL", true));
+
+        mockMvc.perform(post("/api/rules")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "name": "amount-rule",
+                                  "type": "AMOUNT",
+                                  "condition": {
+                                    "version": 1,
+                                    "type": "EVENT",
+                                    "condition": {
+                                      "all": [
+                                        {"field": "amount", "op": "gte", "value": "1000000000000000000"}
+                                      ]
+                                    }
+                                  },
+                                  "severity": "CRITICAL",
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type", is("AMOUNT")));
+
+        ArgumentCaptor<AlertRuleCreateCommand> captor = ArgumentCaptor.forClass(AlertRuleCreateCommand.class);
+        verify(alertRuleService).create(captor.capture());
+        AlertRuleCreateCommand cmd = captor.getValue();
+        Assertions.assertEquals("amount-rule", cmd.name());
+        Assertions.assertEquals(AlertRuleType.AMOUNT, cmd.type());
     }
 
     @Test

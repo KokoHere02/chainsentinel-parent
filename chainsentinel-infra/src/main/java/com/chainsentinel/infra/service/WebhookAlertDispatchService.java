@@ -11,6 +11,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -31,23 +33,38 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
     private static final String STATUS_PENDING = "PENDING";
     private static final String STATUS_SENT = "SENT";
     private static final String STATUS_FAILED = "FAILED";
+    private static final String METRIC_ALERT_SEND_TOTAL = "alert_send_total";
+    private static final String METRIC_ALERT_SEND_SUCCESS_TOTAL = "alert_send_success_total";
+    private static final String METRIC_ALERT_RETRY_TOTAL = "alert_retry_total";
 
     private final AlertProperties alertProperties;
     private final AlertEventRepository alertEventRepository;
     private final AlertRuleRepository alertRuleRepository;
     private final AssetEventRepository assetEventRepository;
+    private final MeterRegistry meterRegistry;
+    private final AtomicLong alertSendTotal = new AtomicLong();
+    private final AtomicLong alertSendSuccessTotal = new AtomicLong();
     private final RestTemplate restTemplate = new RestTemplate();
 
     public WebhookAlertDispatchService(
             AlertProperties alertProperties,
             AlertEventRepository alertEventRepository,
             AlertRuleRepository alertRuleRepository,
-            AssetEventRepository assetEventRepository
+            AssetEventRepository assetEventRepository,
+            MeterRegistry meterRegistry
     ) {
         this.alertProperties = alertProperties;
         this.alertEventRepository = alertEventRepository;
         this.alertRuleRepository = alertRuleRepository;
         this.assetEventRepository = assetEventRepository;
+        this.meterRegistry = meterRegistry;
+        meterRegistry.gauge("alert_send_success_rate", this, s -> {
+            long total = s.alertSendTotal.get();
+            if (total <= 0) {
+                return 0.0;
+            }
+            return (double) s.alertSendSuccessTotal.get() / total;
+        });
     }
 
     @Override
@@ -106,6 +123,8 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
     }
 
     private boolean doSend(AlertEventEntity alert) {
+        alertSendTotal.incrementAndGet();
+        meterRegistry.counter(METRIC_ALERT_SEND_TOTAL).increment();
         try {
             Map<String, Object> payload = buildPayload(alert);
             HttpHeaders headers = new HttpHeaders();
@@ -121,6 +140,8 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
                 alert.setLastError(null);
                 alert.setSentAt(Instant.now());
                 alertEventRepository.save(alert);
+                alertSendSuccessTotal.incrementAndGet();
+                meterRegistry.counter(METRIC_ALERT_SEND_SUCCESS_TOTAL).increment();
                 log.info("alert.dispatch.send.success alertId={} statusCode={}",
                         alert.getId(), response.getStatusCode().value());
                 return true;
@@ -164,6 +185,7 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
 
         alert.setRetryCount(retry);
         alert.setLastError(trimError(error));
+        meterRegistry.counter(METRIC_ALERT_RETRY_TOTAL).increment();
 
         String nextStatus = retry >= alertProperties.getRetryMax() ? STATUS_FAILED : STATUS_PENDING;
         alert.setSendStatus(nextStatus);

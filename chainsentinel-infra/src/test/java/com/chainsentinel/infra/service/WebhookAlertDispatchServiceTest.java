@@ -20,6 +20,7 @@ import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.repository.AlertEventRepository;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.repository.AssetEventRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -51,6 +52,7 @@ class WebhookAlertDispatchServiceTest {
     private RestTemplate restTemplate;
 
     private AlertProperties alertProperties;
+    private SimpleMeterRegistry meterRegistry;
     private WebhookAlertDispatchService service;
 
     @BeforeEach
@@ -60,7 +62,14 @@ class WebhookAlertDispatchServiceTest {
         alertProperties.setWebhookUrl("http://localhost/webhook");
         alertProperties.setRetryMax(3);
 
-        service = new WebhookAlertDispatchService(alertProperties, alertEventRepository, alertRuleRepository, assetEventRepository);
+        meterRegistry = new SimpleMeterRegistry();
+        service = new WebhookAlertDispatchService(
+                alertProperties,
+                alertEventRepository,
+                alertRuleRepository,
+                assetEventRepository,
+                meterRegistry
+        );
         ReflectionTestUtils.setField(service, "restTemplate", restTemplate);
     }
 
@@ -152,6 +161,31 @@ class WebhookAlertDispatchServiceTest {
         assertEquals("SENT", saved.getSendStatus());
         assertNull(saved.getLastError());
         assertTrue(saved.getSentAt() != null);
+
+        assertEquals(1.0, meterRegistry.get("alert_send_total").counter().count());
+        assertEquals(1.0, meterRegistry.get("alert_send_success_total").counter().count());
+        assertEquals(1.0, meterRegistry.get("alert_send_success_rate").gauge().value());
+    }
+
+    @Test
+    void dispatchPendingShouldIncreaseRetryMetricOnFailure() {
+        AlertEventEntity alert = new AlertEventEntity();
+        ReflectionTestUtils.setField(alert, "id", 4L);
+        alert.setRuleId(8L);
+        alert.setAssetEventId(9L);
+        alert.setSeverity("MEDIUM");
+        alert.setSendStatus("PENDING");
+        alert.setRetryCount(0);
+
+        when(alertEventRepository.findTop100BySendStatusOrderByIdAsc("PENDING")).thenReturn(List.of(alert));
+        when(alertRuleRepository.findById(8L)).thenReturn(Optional.empty());
+        when(assetEventRepository.findById(9L)).thenReturn(Optional.empty());
+        when(restTemplate.postForEntity(anyString(), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(new ResponseEntity<>("bad", HttpStatus.INTERNAL_SERVER_ERROR));
+
+        int sent = service.dispatchPending();
+
+        assertEquals(0, sent);
+        assertEquals(1.0, meterRegistry.get("alert_retry_total").counter().count());
     }
 }
-

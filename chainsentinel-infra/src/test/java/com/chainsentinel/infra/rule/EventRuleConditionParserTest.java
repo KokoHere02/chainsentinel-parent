@@ -7,12 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.chainsentinel.core.model.EventStatus;
 import com.chainsentinel.core.model.TokenType;
-import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.core.rule.model.EventRuleCondition;
 import com.chainsentinel.core.rule.model.EventRuleConditionItem;
 import com.chainsentinel.core.rule.model.EventRuleField;
 import com.chainsentinel.core.rule.model.EventRuleOperator;
 import com.chainsentinel.core.rule.model.EventRuleSpec;
+import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -63,6 +63,38 @@ class EventRuleConditionParserTest {
     }
 
     @Test
+    void shouldCompareAmountByMinimalUnitValue() {
+        EventRuleSpec spec = new EventRuleSpec(
+                1,
+                "EVENT",
+                new EventRuleCondition(List.of(
+                        new EventRuleConditionItem(EventRuleField.AMOUNT, EventRuleOperator.EQ, "100")
+                ))
+        );
+
+        AssetEventEntity event = new AssetEventEntity();
+        event.setAmount("000100");
+
+        assertTrue(parser.matches(spec, event));
+    }
+
+    @Test
+    void shouldRejectDecimalAmountValue() {
+        EventRuleSpec spec = new EventRuleSpec(
+                1,
+                "EVENT",
+                new EventRuleCondition(List.of(
+                        new EventRuleConditionItem(EventRuleField.AMOUNT, EventRuleOperator.GTE, "1.5")
+                ))
+        );
+
+        AssetEventEntity event = new AssetEventEntity();
+        event.setAmount("2");
+
+        assertThrows(IllegalArgumentException.class, () -> parser.matches(spec, event));
+    }
+
+    @Test
     void shouldSupportInOperator() {
         EventRuleSpec spec = new EventRuleSpec(
                 1,
@@ -102,11 +134,11 @@ class EventRuleConditionParserTest {
     void shouldRejectInvalidOpFromJson() {
         String json = """
                 {
-                  "version": 1,
-                  "type": "EVENT",
-                  "condition": {
-                    "all": [
-                      {"field":"chain","op":"contains","value":"ETH"}
+                  \"version\": 1,
+                  \"type\": \"EVENT\",
+                  \"condition\": {
+                    \"all\": [
+                      {\"field\":\"chain\",\"op\":\"contains\",\"value\":\"ETH\"}
                     ]
                   }
                 }

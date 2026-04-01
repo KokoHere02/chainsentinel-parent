@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.chainsentinel.core.model.EventStatus;
 import com.chainsentinel.core.model.TokenType;
@@ -22,6 +23,7 @@ import com.chainsentinel.infra.repository.AssetEventRepository;
 import com.chainsentinel.infra.repository.ChainConfigRepository;
 import com.chainsentinel.infra.repository.MonitorAddressRepository;
 import com.chainsentinel.infra.repository.ScanCheckpointRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.web3j.abi.EventEncoder;
@@ -59,6 +61,10 @@ public class EthereumScannerService implements ScannerService {
     private final AssetEventRepository assetEventRepository;
     private final MonitorAddressRepository monitorAddressRepository;
     private final AddressAlertMatcher addressAlertMatcher;
+    private final MeterRegistry meterRegistry;
+    private final AtomicLong scannerLagBlocks = new AtomicLong();
+    private final AtomicLong eventIngestTotal = new AtomicLong();
+    private final AtomicLong eventDuplicateTotal = new AtomicLong();
 
     public EthereumScannerService(
             ScannerProperties scannerProperties,
@@ -66,7 +72,8 @@ public class EthereumScannerService implements ScannerService {
             ScanCheckpointRepository scanCheckpointRepository,
             AssetEventRepository assetEventRepository,
             MonitorAddressRepository monitorAddressRepository,
-            AddressAlertMatcher addressAlertMatcher
+            AddressAlertMatcher addressAlertMatcher,
+            MeterRegistry meterRegistry
     ) {
         this.scannerProperties = scannerProperties;
         this.chainConfigRepository = chainConfigRepository;
@@ -74,6 +81,15 @@ public class EthereumScannerService implements ScannerService {
         this.assetEventRepository = assetEventRepository;
         this.monitorAddressRepository = monitorAddressRepository;
         this.addressAlertMatcher = addressAlertMatcher;
+        this.meterRegistry = meterRegistry;
+        meterRegistry.gauge("scanner_lag_blocks", scannerLagBlocks);
+        meterRegistry.gauge("event_duplicate_rate", this, s -> {
+            long total = s.eventIngestTotal.get();
+            if (total <= 0) {
+                return 0.0;
+            }
+            return (double) s.eventDuplicateTotal.get() / total;
+        });
     }
 
     @Override
@@ -111,6 +127,7 @@ public class EthereumScannerService implements ScannerService {
             );
             ScanWindow window = resolveWindow(latest, runtime);
             if (window.fromBlock() > window.toBlock()) {
+                scannerLagBlocks.set(0L);
                 return 0;
             }
 
@@ -120,6 +137,8 @@ public class EthereumScannerService implements ScannerService {
             inserted += ingestEthTransfers(web3j, latest, window.fromBlock(), window.toBlock(), blockCache, runtime, full);
 
             saveCheckpoint(window.toBlock(), runtime);
+            long lagBlocks = Math.max(0L, latest - window.toBlock());
+            scannerLagBlocks.set(lagBlocks);
             log.info("Scan completed: chain={}-{}, window=[{}-{}], inserted={}, full={}",
                     runtime.chain(), runtime.network(), window.fromBlock(), window.toBlock(), inserted, full);
             return inserted;
@@ -453,9 +472,13 @@ public class EthereumScannerService implements ScannerService {
     }
 
     private int upsertEvent(AssetEventEntity incoming, boolean evaluateAlert) {
+        eventIngestTotal.incrementAndGet();
+        meterRegistry.counter("event_ingest_total").increment();
         Optional<AssetEventEntity> existingOpt = assetEventRepository.findByChainAndTxHashAndLogIndex(
                 incoming.getChain(), incoming.getTxHash(), incoming.getLogIndex());
         if (existingOpt.isPresent()) {
+            eventDuplicateTotal.incrementAndGet();
+            meterRegistry.counter("event_duplicate_total").increment();
             AssetEventEntity existing = existingOpt.get();
             existing.setConfirmations(incoming.getConfirmations());
             existing.setStatus(incoming.getStatus());

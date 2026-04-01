@@ -2,17 +2,20 @@ package com.chainsentinel.infra.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.infra.entity.AlertEventEntity;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
 import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.repository.AlertEventRepository;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.rule.EventRuleConditionParser;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,11 +37,13 @@ class AddressAlertMatcherTest {
     @Mock
     private EventRuleConditionParser ruleConditionParser;
 
+    private SimpleMeterRegistry meterRegistry;
     private AddressAlertMatcher matcher;
 
     @BeforeEach
     void setUp() {
-        matcher = new AddressAlertMatcher(alertRuleRepository, alertEventRepository, ruleConditionParser);
+        meterRegistry = new SimpleMeterRegistry();
+        matcher = new AddressAlertMatcher(alertRuleRepository, alertEventRepository, ruleConditionParser, meterRegistry);
     }
 
     @Test
@@ -59,6 +64,7 @@ class AddressAlertMatcherTest {
 
         AlertRuleEntity rule = new AlertRuleEntity();
         ReflectionTestUtils.setField(rule, "id", 1L);
+        rule.setType(AlertRuleType.ADDRESS);
         rule.setConditionJson("{}");
 
         when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(rule));
@@ -66,28 +72,30 @@ class AddressAlertMatcherTest {
 
         matcher.evaluate(event);
 
-        verify(alertEventRepository, never()).save(org.mockito.ArgumentMatchers.any(AlertEventEntity.class));
+        verify(alertEventRepository, never()).save(any(AlertEventEntity.class));
         verify(alertEventRepository, never()).existsByRuleIdAndAssetEventId(1L, 10L);
     }
 
     @Test
-    void shouldCreateAlertsForMatchedUnsentRules() {
+    void shouldCreateAlertsForMatchedAddressAndAmountRules() {
         AssetEventEntity event = new AssetEventEntity();
         ReflectionTestUtils.setField(event, "id", 99L);
 
-        AlertRuleEntity duplicated = new AlertRuleEntity();
-        ReflectionTestUtils.setField(duplicated, "id", 1L);
-        duplicated.setSeverity("HIGH");
-        duplicated.setConditionJson("{\"version\":1}");
+        AlertRuleEntity duplicatedAddressRule = new AlertRuleEntity();
+        ReflectionTestUtils.setField(duplicatedAddressRule, "id", 1L);
+        duplicatedAddressRule.setType(AlertRuleType.ADDRESS);
+        duplicatedAddressRule.setSeverity("HIGH");
+        duplicatedAddressRule.setConditionJson("{\"version\":1}");
 
-        AlertRuleEntity newRule = new AlertRuleEntity();
-        ReflectionTestUtils.setField(newRule, "id", 2L);
-        newRule.setSeverity("LOW");
-        newRule.setConditionJson("{\"version\":1}");
+        AlertRuleEntity newAmountRule = new AlertRuleEntity();
+        ReflectionTestUtils.setField(newAmountRule, "id", 2L);
+        newAmountRule.setType(AlertRuleType.AMOUNT);
+        newAmountRule.setSeverity("LOW");
+        newAmountRule.setConditionJson("{\"version\":1}");
 
-        when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(duplicated, newRule));
-        when(ruleConditionParser.matches(duplicated.getConditionJson(), event)).thenReturn(true);
-        when(ruleConditionParser.matches(newRule.getConditionJson(), event)).thenReturn(true);
+        when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(duplicatedAddressRule, newAmountRule));
+        when(ruleConditionParser.matches(duplicatedAddressRule.getConditionJson(), event)).thenReturn(true);
+        when(ruleConditionParser.matches(newAmountRule.getConditionJson(), event)).thenReturn(true);
         when(alertEventRepository.existsByRuleIdAndAssetEventId(1L, 99L)).thenReturn(true);
         when(alertEventRepository.existsByRuleIdAndAssetEventId(2L, 99L)).thenReturn(false);
 
@@ -105,12 +113,31 @@ class AddressAlertMatcherTest {
     }
 
     @Test
-    void shouldSkipInvalidRuleJson() {
+    void shouldSkipUnsupportedFrequencyRuleType() {
+        AssetEventEntity event = new AssetEventEntity();
+        ReflectionTestUtils.setField(event, "id", 88L);
+
+        AlertRuleEntity frequencyRule = new AlertRuleEntity();
+        ReflectionTestUtils.setField(frequencyRule, "id", 3L);
+        frequencyRule.setType(AlertRuleType.FREQUENCY);
+        frequencyRule.setConditionJson("{\"version\":1}");
+
+        when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(frequencyRule));
+
+        matcher.evaluate(event);
+
+        verify(ruleConditionParser, never()).matches(any(String.class), any(AssetEventEntity.class));
+        verify(alertEventRepository, never()).save(any(AlertEventEntity.class));
+    }
+
+    @Test
+    void shouldRecordMetricAndSkipWhenRuleIsInvalid() {
         AssetEventEntity event = new AssetEventEntity();
         ReflectionTestUtils.setField(event, "id", 77L);
 
         AlertRuleEntity badRule = new AlertRuleEntity();
         ReflectionTestUtils.setField(badRule, "id", 3L);
+        badRule.setType(AlertRuleType.AMOUNT);
         badRule.setConditionJson("bad-json");
 
         when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(badRule));
@@ -118,6 +145,45 @@ class AddressAlertMatcherTest {
 
         matcher.evaluate(event);
 
-        verify(alertEventRepository, never()).save(org.mockito.ArgumentMatchers.any(AlertEventEntity.class));
+        verify(alertEventRepository, never()).save(any(AlertEventEntity.class));
+        double count = meterRegistry
+                .get("rule_eval_fail_total")
+                .tags("ruleId", "3", "type", "AMOUNT", "reason", "invalid")
+                .counter()
+                .count();
+        assertEquals(1.0, count);
+    }
+
+    @Test
+    void shouldRecordMetricAndContinueWhenUnexpectedErrorOccurs() {
+        AssetEventEntity event = new AssetEventEntity();
+        ReflectionTestUtils.setField(event, "id", 55L);
+
+        AlertRuleEntity errorRule = new AlertRuleEntity();
+        ReflectionTestUtils.setField(errorRule, "id", 5L);
+        errorRule.setType(AlertRuleType.ADDRESS);
+        errorRule.setConditionJson("{\"version\":1}");
+
+        AlertRuleEntity matchedRule = new AlertRuleEntity();
+        ReflectionTestUtils.setField(matchedRule, "id", 6L);
+        matchedRule.setType(AlertRuleType.AMOUNT);
+        matchedRule.setSeverity("HIGH");
+        matchedRule.setConditionJson("{\"version\":2}");
+
+        when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(errorRule, matchedRule));
+        when(ruleConditionParser.matches(errorRule.getConditionJson(), event)).thenThrow(new RuntimeException("boom"));
+        when(ruleConditionParser.matches(matchedRule.getConditionJson(), event)).thenReturn(true);
+        when(alertEventRepository.existsByRuleIdAndAssetEventId(6L, 55L)).thenReturn(false);
+
+        matcher.evaluate(event);
+
+        verify(alertEventRepository).save(any(AlertEventEntity.class));
+        double count = meterRegistry
+                .get("rule_eval_fail_total")
+                .tags("ruleId", "5", "type", "ADDRESS", "reason", "error")
+                .counter()
+                .count();
+        assertEquals(1.0, count);
     }
 }
+

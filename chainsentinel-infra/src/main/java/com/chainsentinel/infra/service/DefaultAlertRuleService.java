@@ -1,16 +1,24 @@
 package com.chainsentinel.infra.service;
 
+import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.service.AlertRuleService;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.rule.EventRuleConditionParser;
+import java.util.EnumSet;
+import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class DefaultAlertRuleService implements AlertRuleService {
+
+    private static final Logger log = LoggerFactory.getLogger(DefaultAlertRuleService.class);
+    private static final Set<AlertRuleType> ENABLED_RULE_TYPES = EnumSet.of(AlertRuleType.ADDRESS, AlertRuleType.AMOUNT);
 
     private final AlertRuleRepository alertRuleRepository;
     private final EventRuleConditionParser ruleConditionParser;
@@ -23,6 +31,8 @@ public class DefaultAlertRuleService implements AlertRuleService {
     @Override
     @Transactional
     public AlertRuleView create(AlertRuleCreateCommand command) {
+        validateRuleType(command.type());
+
         AlertRuleEntity entity = new AlertRuleEntity();
         entity.setName(command.name());
         entity.setType(command.type());
@@ -39,5 +49,13 @@ public class DefaultAlertRuleService implements AlertRuleService {
                 saved.getSeverity(),
                 saved.getEnabled()
         );
+    }
+
+    private void validateRuleType(AlertRuleType type) {
+        if (type != null && ENABLED_RULE_TYPES.contains(type)) {
+            return;
+        }
+        log.warn("rule.governance.reject type={} enabledTypes={}", type, ENABLED_RULE_TYPES);
+        throw new IllegalArgumentException("Rule type is disabled by governance: " + type);
     }
 }
