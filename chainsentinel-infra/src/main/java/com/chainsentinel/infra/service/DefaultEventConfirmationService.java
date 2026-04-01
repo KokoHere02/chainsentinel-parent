@@ -1,11 +1,5 @@
 package com.chainsentinel.infra.service;
 
-import java.io.IOException;
-import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-
 import com.chainsentinel.core.model.EventStatus;
 import com.chainsentinel.core.service.EventConfirmationService;
 import com.chainsentinel.infra.config.ConfirmationProperties;
@@ -14,15 +8,19 @@ import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.entity.ChainConfigEntity;
 import com.chainsentinel.infra.repository.AssetEventRepository;
 import com.chainsentinel.infra.repository.ChainConfigRepository;
+import java.io.IOException;
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.web3j.protocol.Web3j;
-import org.web3j.protocol.exceptions.ClientConnectionException;
-import org.web3j.protocol.http.HttpService;
-
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.web3j.protocol.Web3j;
+import org.web3j.protocol.exceptions.ClientConnectionException;
+import org.web3j.protocol.http.HttpService;
 
 @Service
 public class DefaultEventConfirmationService implements EventConfirmationService {
@@ -33,17 +31,20 @@ public class DefaultEventConfirmationService implements EventConfirmationService
   private final ChainConfigRepository chainConfigRepository;
   private final ScannerProperties scannerProperties;
   private final ConfirmationProperties confirmationProperties;
+  private final ChainConfigRpcUrlCodec chainConfigRpcUrlCodec;
 
   public DefaultEventConfirmationService(
     AssetEventRepository assetEventRepository,
     ChainConfigRepository chainConfigRepository,
     ScannerProperties scannerProperties,
-    ConfirmationProperties confirmationProperties
+    ConfirmationProperties confirmationProperties,
+    ChainConfigRpcUrlCodec chainConfigRpcUrlCodec
   ) {
     this.assetEventRepository = assetEventRepository;
     this.chainConfigRepository = chainConfigRepository;
     this.scannerProperties = scannerProperties;
     this.confirmationProperties = confirmationProperties;
+    this.chainConfigRpcUrlCodec = chainConfigRpcUrlCodec;
   }
 
   @Override
@@ -65,10 +66,13 @@ public class DefaultEventConfirmationService implements EventConfirmationService
     if (pendingCount <= 0) {
       return 0;
     }
-    if (!StringUtils.hasText(chainConfig.getRpcUrl())) {
+
+    String rpcUrl = chainConfigRpcUrlCodec.decryptIfNeeded(chainConfig.getRpcUrl(), chain, network);
+    if (!StringUtils.hasText(rpcUrl)) {
       log.warn("Skip confirmation advance for {}-{} because rpcUrl is empty", chain, network);
       return 0;
     }
+    chainConfig.setRpcUrl(rpcUrl);
 
     try {
       long latestBlock = fetchLatestBlock(chainConfig);
@@ -213,7 +217,5 @@ public class DefaultEventConfirmationService implements EventConfirmationService
   @FunctionalInterface
   private interface RpcSupplier<T> {
     T get() throws IOException;
-
   }
-
 }
