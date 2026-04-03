@@ -1,8 +1,8 @@
 package com.chainsentinel.core.model;
 
 public enum RuleType {
-    ADDRESS,
-    AMOUNT,
-    FREQUENCY
+  ADDRESS,
+  AMOUNT,
+  PRICE_THRESHOLD,
+  FREQUENCY
 }
-

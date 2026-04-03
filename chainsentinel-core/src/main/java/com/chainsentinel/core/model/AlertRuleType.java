@@ -1,7 +1,8 @@
 package com.chainsentinel.core.model;
 
 public enum AlertRuleType {
-    ADDRESS,
-    AMOUNT,
-    FREQUENCY
+  ADDRESS,
+  AMOUNT,
+  PRICE_THRESHOLD,
+  FREQUENCY
 }

@@ -1,13 +1,13 @@
 package com.chainsentinel.core.service.dto;
 
 import com.chainsentinel.core.model.AlertRuleType;
-import com.chainsentinel.core.rule.model.EventRuleSpec;
+import com.fasterxml.jackson.databind.JsonNode;
 
 public record AlertRuleCreateCommand(
-        String name,
-        AlertRuleType type,
-        EventRuleSpec condition,
-        String severity,
-        Boolean enabled
+  String name,
+  AlertRuleType type,
+  JsonNode condition,
+  String severity,
+  Boolean enabled
 ) {
 }

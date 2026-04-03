@@ -13,11 +13,16 @@ import com.chainsentinel.core.rule.model.EventRuleConditionItem;
 import com.chainsentinel.core.rule.model.EventRuleField;
 import com.chainsentinel.core.rule.model.EventRuleOperator;
 import com.chainsentinel.core.rule.model.EventRuleSpec;
+import com.chainsentinel.core.rule.model.PriceRuleCondition;
+import com.chainsentinel.core.rule.model.PriceRuleOperator;
+import com.chainsentinel.core.rule.model.PriceRuleSpec;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.rule.EventRuleConditionParser;
+import com.chainsentinel.infra.rule.PriceRuleConditionParser;
+import com.chainsentinel.infra.rule.RuleConditionJsonParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -29,122 +34,131 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class DefaultAlertRuleServiceTest {
 
-    @Mock
-    private AlertRuleRepository alertRuleRepository;
+  @Mock
+  private AlertRuleRepository alertRuleRepository;
 
-    private final EventRuleConditionParser parser = new EventRuleConditionParser(new ObjectMapper());
+  private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Test
-    void shouldCreateAddressRuleAndSerializeConditionObject() throws Exception {
-        DefaultAlertRuleService service = new DefaultAlertRuleService(alertRuleRepository, parser);
+  private DefaultAlertRuleService buildService() {
+    RuleConditionJsonParser parser = new RuleConditionJsonParser(
+      objectMapper,
+      new EventRuleConditionParser(objectMapper),
+      new PriceRuleConditionParser(objectMapper)
+    );
+    return new DefaultAlertRuleService(alertRuleRepository, parser);
+  }
 
-        when(alertRuleRepository.save(any(AlertRuleEntity.class))).thenAnswer(invocation -> {
-            AlertRuleEntity entity = invocation.getArgument(0);
-            ReflectionTestUtils.setField(entity, "id", 7L);
-            return entity;
-        });
+  @Test
+  void shouldCreateAddressRuleAndSerializeConditionObject() throws Exception {
+    DefaultAlertRuleService service = buildService();
 
-        EventRuleSpec spec = new EventRuleSpec(
-                1,
-                "EVENT",
-                new EventRuleCondition(List.of(
-                        new EventRuleConditionItem(EventRuleField.CHAIN, EventRuleOperator.EQ, "ETH"),
-                        new EventRuleConditionItem(EventRuleField.NETWORK, EventRuleOperator.EQ, "sepolia"),
-                        new EventRuleConditionItem(EventRuleField.AMOUNT, EventRuleOperator.GTE, "100")
-                ))
-        );
+    when(alertRuleRepository.save(any(AlertRuleEntity.class))).thenAnswer(invocation -> {
+      AlertRuleEntity entity = invocation.getArgument(0);
+      ReflectionTestUtils.setField(entity, "id", 7L);
+      return entity;
+    });
 
-        AlertRuleCreateCommand command = new AlertRuleCreateCommand(
-                "address-watch",
-                AlertRuleType.ADDRESS,
-                spec,
-                "HIGH",
-                true
-        );
+    EventRuleSpec spec = new EventRuleSpec(
+      1,
+      "EVENT",
+      new EventRuleCondition(List.of(
+        new EventRuleConditionItem(EventRuleField.CHAIN, EventRuleOperator.EQ, "ETH"),
+        new EventRuleConditionItem(EventRuleField.NETWORK, EventRuleOperator.EQ, "sepolia"),
+        new EventRuleConditionItem(EventRuleField.AMOUNT, EventRuleOperator.GTE, "100")
+      ))
+    );
 
-        AlertRuleView view = service.create(command);
+    AlertRuleCreateCommand command = new AlertRuleCreateCommand(
+      "address-watch",
+      AlertRuleType.ADDRESS,
+      objectMapper.valueToTree(spec),
+      "HIGH",
+      true
+    );
 
-        assertEquals("address-watch", view.name());
-        assertEquals(AlertRuleType.ADDRESS, view.type());
-        assertEquals("HIGH", view.severity());
-        assertTrue(view.enabled());
-        assertEquals(1, new ObjectMapper().readTree(view.conditionJson()).get("version").asInt());
-    }
+    AlertRuleView view = service.create(command);
 
-    @Test
-    void shouldCreateAmountRuleAndKeepAmountType() {
-        DefaultAlertRuleService service = new DefaultAlertRuleService(alertRuleRepository, parser);
+    assertEquals("address-watch", view.name());
+    assertEquals(AlertRuleType.ADDRESS, view.type());
+    assertEquals("HIGH", view.severity());
+    assertTrue(view.enabled());
+    assertEquals(1, objectMapper.readTree(view.conditionJson()).get("version").asInt());
+  }
 
-        when(alertRuleRepository.save(any(AlertRuleEntity.class))).thenAnswer(invocation -> {
-            AlertRuleEntity entity = invocation.getArgument(0);
-            ReflectionTestUtils.setField(entity, "id", 11L);
-            return entity;
-        });
+  @Test
+  void shouldCreatePriceThresholdRule() throws Exception {
+    DefaultAlertRuleService service = buildService();
 
-        EventRuleSpec spec = new EventRuleSpec(
-                1,
-                "EVENT",
-                new EventRuleCondition(List.of(
-                        new EventRuleConditionItem(EventRuleField.AMOUNT, EventRuleOperator.GTE, "1000000000000000000")
-                ))
-        );
+    when(alertRuleRepository.save(any(AlertRuleEntity.class))).thenAnswer(invocation -> {
+      AlertRuleEntity entity = invocation.getArgument(0);
+      ReflectionTestUtils.setField(entity, "id", 13L);
+      return entity;
+    });
 
-        AlertRuleView view = service.create(new AlertRuleCreateCommand(
-                "amount-watch",
-                AlertRuleType.AMOUNT,
-                spec,
-                "CRITICAL",
-                true
-        ));
+    PriceRuleSpec spec = new PriceRuleSpec();
+    spec.setVersion(1);
+    spec.setType("PRICE");
+    PriceRuleCondition condition = new PriceRuleCondition();
+    condition.setSymbol("BTC-USDT");
+    condition.setOp(PriceRuleOperator.GTE);
+    condition.setThreshold("100000");
+    spec.setCondition(condition);
 
-        assertEquals("amount-watch", view.name());
-        assertEquals(AlertRuleType.AMOUNT, view.type());
-        assertEquals("CRITICAL", view.severity());
-        assertTrue(view.enabled());
-    }
+    AlertRuleView view = service.create(new AlertRuleCreateCommand(
+      "btc-watch",
+      AlertRuleType.PRICE_THRESHOLD,
+      objectMapper.valueToTree(spec),
+      "HIGH",
+      true
+    ));
 
-    @Test
-    void shouldRejectFrequencyRuleByGovernance() {
-        DefaultAlertRuleService service = new DefaultAlertRuleService(alertRuleRepository, parser);
+    assertEquals(AlertRuleType.PRICE_THRESHOLD, view.type());
+    assertEquals("btc-watch", view.name());
+    assertEquals("BTC-USDT", objectMapper.readTree(view.conditionJson()).get("condition").get("symbol").asText());
+  }
 
-        EventRuleSpec spec = new EventRuleSpec(
-                1,
-                "EVENT",
-                new EventRuleCondition(List.of(
-                        new EventRuleConditionItem(EventRuleField.CHAIN, EventRuleOperator.EQ, "ETH")
-                ))
-        );
+  @Test
+  void shouldRejectFrequencyRuleByGovernance() {
+    DefaultAlertRuleService service = buildService();
 
-        RuleGovernanceException ex = assertThrows(RuleGovernanceException.class, () -> service.create(new AlertRuleCreateCommand(
-                "freq-rule",
-                AlertRuleType.FREQUENCY,
-                spec,
-                "MEDIUM",
-                true
-        )));
+    EventRuleSpec spec = new EventRuleSpec(
+      1,
+      "EVENT",
+      new EventRuleCondition(List.of(
+        new EventRuleConditionItem(EventRuleField.CHAIN, EventRuleOperator.EQ, "ETH")
+      ))
+    );
 
-        assertEquals("Rule type is disabled by governance: FREQUENCY", ex.getMessage());
-        assertEquals("RULE_GOVERNANCE_REJECTED", ex.getCode());
-        assertEquals(400, ex.getStatus());
-    }
+    RuleGovernanceException ex = assertThrows(RuleGovernanceException.class, () -> service.create(new AlertRuleCreateCommand(
+      "freq-rule",
+      AlertRuleType.FREQUENCY,
+      objectMapper.valueToTree(spec),
+      "MEDIUM",
+      true
+    )));
 
-    @Test
-    void shouldThrowIllegalArgumentWhenConditionIsInvalid() {
-        DefaultAlertRuleService service = new DefaultAlertRuleService(alertRuleRepository, parser);
+    assertEquals("Rule type is disabled by governance: FREQUENCY", ex.getMessage());
+    assertEquals("RULE_GOVERNANCE_REJECTED", ex.getCode());
+    assertEquals(400, ex.getStatus());
+  }
 
-        EventRuleSpec invalid = new EventRuleSpec();
-        invalid.setVersion(1);
-        invalid.setType("EVENT");
+  @Test
+  void shouldThrowIllegalArgumentWhenConditionIsInvalid() {
+    DefaultAlertRuleService service = buildService();
 
-        AlertRuleCreateCommand command = new AlertRuleCreateCommand(
-                "bad-rule",
-                AlertRuleType.ADDRESS,
-                invalid,
-                "HIGH",
-                true
-        );
+    EventRuleSpec invalid = new EventRuleSpec();
+    invalid.setVersion(1);
+    invalid.setType("EVENT");
 
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.create(command));
-        assertEquals("condition.all must be a non-empty array", ex.getMessage());
-    }
+    AlertRuleCreateCommand command = new AlertRuleCreateCommand(
+      "bad-rule",
+      AlertRuleType.ADDRESS,
+      objectMapper.valueToTree(invalid),
+      "HIGH",
+      true
+    );
+
+    IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.create(command));
+    assertEquals("condition.all must be a non-empty array", ex.getMessage());
+  }
 }

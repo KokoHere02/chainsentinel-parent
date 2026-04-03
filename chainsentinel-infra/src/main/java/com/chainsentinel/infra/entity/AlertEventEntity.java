@@ -19,7 +19,7 @@ public class AlertEventEntity {
     @Column(name = "rule_id", nullable = false)
     private Long ruleId;
 
-    @Column(name = "asset_event_id", nullable = false)
+    @Column(name = "asset_event_id")
     private Long assetEventId;
 
     @Column(name = "severity", nullable = false, length = 16)

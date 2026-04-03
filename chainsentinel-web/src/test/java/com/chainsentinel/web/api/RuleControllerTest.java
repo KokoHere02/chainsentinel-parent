@@ -26,100 +26,100 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 @ExtendWith(MockitoExtension.class)
 class RuleControllerTest {
 
-    @Mock
-    private AlertRuleService alertRuleService;
+  @Mock
+  private AlertRuleService alertRuleService;
 
-    private MockMvc mockMvc;
+  private MockMvc mockMvc;
 
-    @BeforeEach
-    void setUp() {
-        RuleController controller = new RuleController(alertRuleService);
-        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
-    }
+  @BeforeEach
+  void setUp() {
+    RuleController controller = new RuleController(alertRuleService);
+    mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+  }
 
-    @Test
-    void shouldCreateAddressRuleWithDefaultEnabled() throws Exception {
-        when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
-                .thenReturn(new AlertRuleView(2L, "r1", AlertRuleType.ADDRESS, "{}", "HIGH", true));
+  @Test
+  void shouldCreateAddressRuleWithDefaultEnabled() throws Exception {
+    when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
+      .thenReturn(new AlertRuleView(2L, "r1", AlertRuleType.ADDRESS, "{}", "HIGH", true));
 
-        mockMvc.perform(post("/api/rules")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "name": "r1",
-                                  "type": "ADDRESS",
-                                  "condition": {
-                                    "version": 1,
-                                    "type": "EVENT",
-                                    "condition": {
-                                      "all": [
-                                        {"field": "chain", "op": "eq", "value": "ETH"}
-                                      ]
-                                    }
-                                  },
-                                  "severity": "HIGH"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id", is(2)))
-                .andExpect(jsonPath("$.type", is("ADDRESS")))
-                .andExpect(jsonPath("$.enabled", is(true)));
+    mockMvc.perform(post("/api/rules")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "name": "r1",
+            "type": "ADDRESS",
+            "condition": {
+              "version": 1,
+              "type": "EVENT",
+              "condition": {
+                "all": [
+                  {"field": "chain", "op": "eq", "value": "ETH"}
+                ]
+              }
+            },
+            "severity": "HIGH"
+          }
+          """))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(2)))
+      .andExpect(jsonPath("$.type", is("ADDRESS")))
+      .andExpect(jsonPath("$.enabled", is(true)));
 
-        ArgumentCaptor<AlertRuleCreateCommand> captor = ArgumentCaptor.forClass(AlertRuleCreateCommand.class);
-        verify(alertRuleService).create(captor.capture());
-        AlertRuleCreateCommand cmd = captor.getValue();
-        Assertions.assertEquals("r1", cmd.name());
-        Assertions.assertEquals(AlertRuleType.ADDRESS, cmd.type());
-        Assertions.assertEquals("HIGH", cmd.severity());
-        Assertions.assertEquals(true, cmd.enabled());
-        Assertions.assertEquals(1, cmd.condition().getVersion());
-    }
+    ArgumentCaptor<AlertRuleCreateCommand> captor = ArgumentCaptor.forClass(AlertRuleCreateCommand.class);
+    verify(alertRuleService).create(captor.capture());
+    AlertRuleCreateCommand cmd = captor.getValue();
+    Assertions.assertEquals("r1", cmd.name());
+    Assertions.assertEquals(AlertRuleType.ADDRESS, cmd.type());
+    Assertions.assertEquals("HIGH", cmd.severity());
+    Assertions.assertEquals(true, cmd.enabled());
+    Assertions.assertEquals(1, cmd.condition().get("version").asInt());
+  }
 
-    @Test
-    void shouldCreateAmountRule() throws Exception {
-        when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
-                .thenReturn(new AlertRuleView(3L, "amount-rule", AlertRuleType.AMOUNT, "{}", "CRITICAL", true));
+  @Test
+  void shouldCreateAmountRule() throws Exception {
+    when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
+      .thenReturn(new AlertRuleView(3L, "amount-rule", AlertRuleType.AMOUNT, "{}", "CRITICAL", true));
 
-        mockMvc.perform(post("/api/rules")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "name": "amount-rule",
-                                  "type": "AMOUNT",
-                                  "condition": {
-                                    "version": 1,
-                                    "type": "EVENT",
-                                    "condition": {
-                                      "all": [
-                                        {"field": "amount", "op": "gte", "value": "1000000000000000000"}
-                                      ]
-                                    }
-                                  },
-                                  "severity": "CRITICAL",
-                                  "enabled": true
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.type", is("AMOUNT")));
+    mockMvc.perform(post("/api/rules")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "name": "amount-rule",
+            "type": "AMOUNT",
+            "condition": {
+              "version": 1,
+              "type": "EVENT",
+              "condition": {
+                "all": [
+                  {"field": "amount", "op": "gte", "value": "1000000000000000000"}
+                ]
+              }
+            },
+            "severity": "CRITICAL",
+            "enabled": true
+          }
+          """))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.type", is("AMOUNT")));
 
-        ArgumentCaptor<AlertRuleCreateCommand> captor = ArgumentCaptor.forClass(AlertRuleCreateCommand.class);
-        verify(alertRuleService).create(captor.capture());
-        AlertRuleCreateCommand cmd = captor.getValue();
-        Assertions.assertEquals("amount-rule", cmd.name());
-        Assertions.assertEquals(AlertRuleType.AMOUNT, cmd.type());
-    }
+    ArgumentCaptor<AlertRuleCreateCommand> captor = ArgumentCaptor.forClass(AlertRuleCreateCommand.class);
+    verify(alertRuleService).create(captor.capture());
+    AlertRuleCreateCommand cmd = captor.getValue();
+    Assertions.assertEquals("amount-rule", cmd.name());
+    Assertions.assertEquals(AlertRuleType.AMOUNT, cmd.type());
+  }
 
-    @Test
-    void shouldReturn400WhenConditionMissing() throws Exception {
-        mockMvc.perform(post("/api/rules")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "name": "r1",
-                                  "type": "ADDRESS",
-                                  "severity": "HIGH"
-                                }
-                                """))
-                .andExpect(status().isBadRequest());
-    }
+  @Test
+  void shouldReturn400WhenConditionMissing() throws Exception {
+    mockMvc.perform(post("/api/rules")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "name": "r1",
+            "type": "ADDRESS",
+            "severity": "HIGH"
+          }
+          """))
+      .andExpect(status().isBadRequest());
+  }
 }
