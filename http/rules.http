@@ -1,0 +1,53 @@
+### ChainSentinel Rule API tests
+@baseUrl = http://localhost:8080
+
+### Create PRICE_THRESHOLD rule (ONCE mode by trigger state)
+POST {{baseUrl}}/api/rules
+Content-Type: application/json
+
+{
+  "name": "btc-price-gte-100000",
+  "type": "PRICE_THRESHOLD",
+  "condition": {
+    "version": 1,
+    "type": "PRICE",
+    "condition": {
+      "symbol": "BTC-USDT",
+      "op": "gte",
+      "threshold": "100000",
+      "cooldownSec": 0
+    }
+  },
+  "severity": "HIGH",
+  "enabled": true
+}
+
+### Create AMOUNT rule (EVENT v1)
+POST {{baseUrl}}/api/rules
+Content-Type: application/json
+
+{
+  "name": "eth-amount-gte-1eth",
+  "type": "AMOUNT",
+  "condition": {
+    "version": 1,
+    "type": "EVENT",
+    "condition": {
+      "all": [
+        {
+          "field": "amount",
+          "op": "gte",
+          "value": "1000000000000000000"
+        }
+      ]
+    }
+  },
+  "severity": "CRITICAL",
+  "enabled": true
+}
+
+### Manually evaluate PRICE_THRESHOLD rules (no need to wait scheduler)
+POST {{baseUrl}}/api/internal/rules/price/evaluate
+Content-Type: application/json
+
+{}
