@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.chainsentinel.infra.entity.PriceProviderConfigEntity;
 import com.chainsentinel.infra.repository.PriceProviderConfigRepository;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +25,8 @@ class DbPriceProviderRuntimeConfigTest {
   @Mock
   private PriceProviderConfigRepository priceProviderConfigRepository;
 
+  private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+
   @Test
   void shouldFilterByEnabledWhenCheckProviderEnabled() {
     when(priceProviderConfigRepository.findByProviderNameAndEnabledTrue("okx"))
@@ -31,7 +34,7 @@ class DbPriceProviderRuntimeConfigTest {
     when(priceProviderConfigRepository.findByProviderNameAndEnabledTrue("binance"))
       .thenReturn(Optional.of(provider("binance", "https://api.binance.com", 2, 1500)));
 
-    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository);
+    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository, meterRegistry);
 
     assertFalse(config.providerEnabled("okx"));
     assertTrue(config.providerEnabled("  BINANCE  "));
@@ -47,7 +50,7 @@ class DbPriceProviderRuntimeConfigTest {
     when(priceProviderConfigRepository.findByEnabledTrueOrderByPriorityAscIdAsc())
       .thenReturn(enabledProviders);
 
-    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository);
+    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository, meterRegistry);
     Map<String, Integer> priorities = config.providerPriority();
 
     assertIterableEquals(List.of("okx", "binance"), new ArrayList<>(priorities.keySet()));
@@ -63,7 +66,7 @@ class DbPriceProviderRuntimeConfigTest {
     when(priceProviderConfigRepository.findByProviderNameAndEnabledTrue("missing"))
       .thenReturn(Optional.empty());
 
-    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository);
+    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository, meterRegistry);
 
     assertEquals("https://okx.com", config.providerBaseUrl("okx", "https://www.okx.com"));
     assertEquals(2500, config.providerTimeoutMs("okx", 1500));
@@ -80,7 +83,7 @@ class DbPriceProviderRuntimeConfigTest {
     when(priceProviderConfigRepository.findByEnabledTrueOrderByPriorityAscIdAsc())
       .thenReturn(List.of(invalid));
 
-    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository);
+    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository, meterRegistry);
 
     Map<String, Integer> priorities = config.providerPriority();
     assertEquals(Integer.MAX_VALUE, priorities.get("okx"));
@@ -95,7 +98,7 @@ class DbPriceProviderRuntimeConfigTest {
     doThrow(new RuntimeException("db down"))
       .when(priceProviderConfigRepository).findByProviderNameAndEnabledTrue("okx");
 
-    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository);
+    DbPriceProviderRuntimeConfig config = new DbPriceProviderRuntimeConfig(priceProviderConfigRepository, meterRegistry);
 
     assertTrue(config.providerPriority().isEmpty());
     assertFalse(config.providerEnabled("okx"));
