@@ -1,13 +1,19 @@
 package com.chainsentinel.infra.config;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.chainsentinel.infra.entity.PriceProviderConfigEntity;
 import com.chainsentinel.infra.repository.PriceProviderConfigRepository;
 import com.chainsentinel.price.config.PriceProviderRuntimeConfig;
+import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -16,23 +22,57 @@ import org.springframework.util.StringUtils;
 @Primary
 public class DbPriceProviderRuntimeConfig implements PriceProviderRuntimeConfig {
 
+  private static final Logger log = LoggerFactory.getLogger(DbPriceProviderRuntimeConfig.class);
+  private static final String PRIORITY_CACHE_KEY = "priorities";
+  private static final Duration CACHE_TTL = Duration.ofSeconds(10);
+
   private final PriceProviderConfigRepository priceProviderConfigRepository;
+  private final Cache<String, Optional<PriceProviderConfigEntity>> providerCache;
+  private final Cache<String, Map<String, Integer>> priorityCache;
 
   public DbPriceProviderRuntimeConfig(PriceProviderConfigRepository priceProviderConfigRepository) {
     this.priceProviderConfigRepository = priceProviderConfigRepository;
+    this.providerCache = Caffeine.newBuilder().expireAfterWrite(CACHE_TTL).build();
+    this.priorityCache = Caffeine.newBuilder().expireAfterWrite(CACHE_TTL).build();
+  }
+
+  @PostConstruct
+  public void logStartupProviderConfig() {
+    try {
+      Map<String, Integer> priorities = providerPriority();
+      if (priorities.isEmpty()) {
+        log.warn("price.runtime.config.startup enabledProviders=0 priorities={}");
+        return;
+      }
+      log.info("price.runtime.config.startup enabledProviders={} priorities={}", priorities.size(), priorities);
+    } catch (Exception ex) {
+      log.warn("price.runtime.config.startup.failed error={}", ex.getMessage());
+    }
   }
 
   @Override
   public Map<String, Integer> providerPriority() {
-    List<PriceProviderConfigEntity> enabledProviders = priceProviderConfigRepository.findByEnabledTrueOrderByPriorityAscIdAsc();
+    Map<String, Integer> cached = priorityCache.getIfPresent(PRIORITY_CACHE_KEY);
+    if (cached != null) {
+      return cached;
+    }
+    List<PriceProviderConfigEntity> enabledProviders;
+    try {
+      enabledProviders = priceProviderConfigRepository.findByEnabledTrueOrderByPriorityAscIdAsc();
+    } catch (Exception ex) {
+      log.warn("price.runtime.config.priority.load_failed error={}", ex.getMessage());
+      return Map.of();
+    }
     Map<String, Integer> priorities = new LinkedHashMap<>();
     for (PriceProviderConfigEntity provider : enabledProviders) {
       if (!StringUtils.hasText(provider.getProviderName())) {
+        log.warn("price.runtime.config.priority.invalid providerName=blank");
         continue;
       }
-      int priority = provider.getPriority() == null ? Integer.MAX_VALUE : provider.getPriority();
+      int priority = resolvePriority(provider);
       priorities.put(normalizeProviderName(provider.getProviderName()), priority);
     }
+    priorityCache.put(PRIORITY_CACHE_KEY, priorities);
     return priorities;
   }
 
@@ -41,14 +81,23 @@ public class DbPriceProviderRuntimeConfig implements PriceProviderRuntimeConfig 
     if (!StringUtils.hasText(providerName)) {
       return false;
     }
-    return priceProviderConfigRepository.findByProviderNameAndEnabledTrue(normalizeProviderName(providerName)).isPresent();
+    try {
+      return priceProviderConfigRepository.findByProviderNameAndEnabledTrue(normalizeProviderName(providerName)).isPresent();
+    } catch (Exception ex) {
+      log.warn("price.runtime.config.enabled.load_failed provider={} error={}", providerName, ex.getMessage());
+      return false;
+    }
   }
 
   @Override
   public String providerBaseUrl(String providerName, String defaultBaseUrl) {
     Optional<PriceProviderConfigEntity> providerOpt = findEnabledProvider(providerName);
-    if (providerOpt.isPresent() && StringUtils.hasText(providerOpt.get().getBaseUrl())) {
-      return providerOpt.get().getBaseUrl().trim();
+    if (providerOpt.isPresent()) {
+      String baseUrl = providerOpt.get().getBaseUrl();
+      if (StringUtils.hasText(baseUrl)) {
+        return baseUrl.trim();
+      }
+      log.warn("price.runtime.config.base_url.invalid provider={} reason=blank fallback={}", providerName, defaultBaseUrl);
     }
     return defaultBaseUrl;
   }
@@ -56,8 +105,12 @@ public class DbPriceProviderRuntimeConfig implements PriceProviderRuntimeConfig 
   @Override
   public int providerTimeoutMs(String providerName, int defaultTimeoutMs) {
     Optional<PriceProviderConfigEntity> providerOpt = findEnabledProvider(providerName);
-    if (providerOpt.isPresent() && providerOpt.get().getTimeoutMs() != null && providerOpt.get().getTimeoutMs() > 0) {
-      return providerOpt.get().getTimeoutMs();
+    if (providerOpt.isPresent()) {
+      Integer timeoutMs = providerOpt.get().getTimeoutMs();
+      if (timeoutMs != null && timeoutMs > 0) {
+        return timeoutMs;
+      }
+      log.warn("price.runtime.config.timeout.invalid provider={} value={} fallback={}", providerName, timeoutMs, defaultTimeoutMs);
     }
     return defaultTimeoutMs;
   }
@@ -66,7 +119,32 @@ public class DbPriceProviderRuntimeConfig implements PriceProviderRuntimeConfig 
     if (!StringUtils.hasText(providerName)) {
       return Optional.empty();
     }
-    return priceProviderConfigRepository.findByProviderNameAndEnabledTrue(normalizeProviderName(providerName));
+    String normalized = normalizeProviderName(providerName);
+    Optional<PriceProviderConfigEntity> cached = providerCache.getIfPresent(normalized);
+    if (cached != null) {
+      return cached;
+    }
+    Optional<PriceProviderConfigEntity> loaded;
+    try {
+      loaded = priceProviderConfigRepository.findByProviderNameAndEnabledTrue(normalized);
+    } catch (Exception ex) {
+      log.warn("price.runtime.config.provider.load_failed provider={} error={}", normalized, ex.getMessage());
+      loaded = Optional.empty();
+    }
+    providerCache.put(normalized, loaded);
+    return loaded;
+  }
+
+  private int resolvePriority(PriceProviderConfigEntity provider) {
+    Integer priority = provider.getPriority();
+    if (priority != null && priority > 0) {
+      return priority;
+    }
+    log.warn("price.runtime.config.priority.invalid provider={} value={} fallback={}",
+      provider.getProviderName(),
+      priority,
+      Integer.MAX_VALUE);
+    return Integer.MAX_VALUE;
   }
 
   private String normalizeProviderName(String providerName) {
