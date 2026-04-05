@@ -42,12 +42,39 @@ this.priorityCache = Caffeine.newBuilder().expireAfterWrite(CACHE_TTL).build();
 @PostConstruct
 public void logStartupProviderConfig() {
 try {
-Map<String, Integer> priorities = providerPriority();
-if (priorities.isEmpty()) {
-log.warn("price.runtime.config.startup enabledProviders=0 priorities={}");
+List<PriceProviderConfigEntity> enabledProviders = priceProviderConfigRepository.findByEnabledTrueOrderByPriorityAscIdAsc();
+if (enabledProviders.isEmpty()) {
+log.warn("price.runtime.config.startup enabledProviders=0 priorities={} details=[]");
 return;
 }
-log.info("price.runtime.config.startup enabledProviders={} priorities={}", priorities.size(), priorities);
+Map<String, Integer> priorities = new LinkedHashMap<>();
+StringBuilder details = new StringBuilder();
+for (PriceProviderConfigEntity provider : enabledProviders) {
+if (!StringUtils.hasText(provider.getProviderName())) {
+continue;
+}
+String providerName = normalizeProviderName(provider.getProviderName());
+int priority = resolvePriority(provider);
+priorities.put(providerName, priority);
+String baseUrl = StringUtils.hasText(provider.getBaseUrl()) ? provider.getBaseUrl().trim() : "blank";
+Integer timeoutMs = provider.getTimeoutMs();
+if (details.length() > 0) {
+details.append(", ");
+}
+details.append(providerName)
+.append("{priority=").append(priority)
+.append(",baseUrl=").append(baseUrl)
+.append(",timeoutMs=").append(timeoutMs)
+.append("}");
+}
+if (priorities.isEmpty()) {
+log.warn("price.runtime.config.startup enabledProviders=0 priorities={} details=[{}]", priorities, details);
+return;
+}
+log.info("price.runtime.config.startup enabledProviders={} priorities={} details=[{}]",
+priorities.size(),
+priorities,
+details);
 } catch (Exception ex) {
 log.warn("price.runtime.config.startup.failed error={}", ex.getMessage());
 }

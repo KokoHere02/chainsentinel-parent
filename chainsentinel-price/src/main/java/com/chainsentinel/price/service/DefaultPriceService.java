@@ -30,12 +30,16 @@ public class DefaultPriceService implements PriceService {
 
 	@Override
 	public Optional<PriceQuote> getQuote(PriceQuery query) {
-		Optional<PriceQuote> quote = providerRouter.getQuote(query, normalizedPriority());
+		Map<String, Integer> runtimePriority = runtimeConfig.providerPriority();
+		boolean runtimeConfigEmpty = runtimePriority == null || runtimePriority.isEmpty();
+		Map<String, Integer> priorities = normalizedPriority(runtimePriority);
+		Optional<PriceQuote> quote = providerRouter.getQuote(query, priorities);
 		if (quote.isPresent()) {
 			priceCache.put(query, quote.get());
 			return quote;
 		}
 
+		String degradeReason = runtimeConfigEmpty ? "runtime_config_empty" : "provider_fetch_failed";
 		Optional<PriceQuote> cached = priceCache.get(query).map(q -> new PriceQuote(
 			q.baseSymbol(),
 			q.quoteSymbol(),
@@ -45,14 +49,16 @@ public class DefaultPriceService implements PriceService {
 			true
 		));
 		if (cached.isPresent()) {
-			log.warn("price.fetch.fallback cache=true instId={}", query.normalizedInstId());
+			log.warn("price.fetch.fallback cache=true reason={} instId={}", degradeReason, query.normalizedInstId());
+			return cached;
 		}
+		log.warn("price.fetch.fallback cache=false reason={} instId={}", degradeReason, query.normalizedInstId());
 		return cached;
 	}
 
-	private Map<String, Integer> normalizedPriority() {
-		Map<String, Integer> raw = runtimeConfig.providerPriority();
+	private Map<String, Integer> normalizedPriority(Map<String, Integer> raw) {
 		if (raw == null || raw.isEmpty()) {
+			log.warn("price.fetch.runtime_config.empty fallback=default provider=okx");
 			Map<String, Integer> defaults = new LinkedHashMap<>();
 			defaults.put("okx", 1);
 			return defaults;
