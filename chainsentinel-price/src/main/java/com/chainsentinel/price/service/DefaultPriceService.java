@@ -4,7 +4,7 @@ import com.chainsentinel.price.api.PriceService;
 import com.chainsentinel.price.api.dto.PriceQuery;
 import com.chainsentinel.price.api.dto.PriceQuote;
 import com.chainsentinel.price.cache.PriceCache;
-import com.chainsentinel.price.config.PriceProperties;
+import com.chainsentinel.price.config.PriceProviderRuntimeConfig;
 import com.chainsentinel.price.provider.ProviderRouter;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,12 +20,12 @@ public class DefaultPriceService implements PriceService {
 
     private final ProviderRouter providerRouter;
     private final PriceCache priceCache;
-    private final PriceProperties priceProperties;
+    private final PriceProviderRuntimeConfig runtimeConfig;
 
-    public DefaultPriceService(ProviderRouter providerRouter, PriceCache priceCache, PriceProperties priceProperties) {
+    public DefaultPriceService(ProviderRouter providerRouter, PriceCache priceCache, PriceProviderRuntimeConfig runtimeConfig) {
         this.providerRouter = providerRouter;
         this.priceCache = priceCache;
-        this.priceProperties = priceProperties;
+        this.runtimeConfig = runtimeConfig;
     }
 
     @Override
@@ -51,7 +51,7 @@ public class DefaultPriceService implements PriceService {
     }
 
     private Map<String, Integer> normalizedPriority() {
-        Map<String, Integer> raw = priceProperties.getProviderPriority();
+        Map<String, Integer> raw = runtimeConfig.providerPriority();
         if (raw == null || raw.isEmpty()) {
             Map<String, Integer> defaults = new LinkedHashMap<>();
             defaults.put("okx", 1);

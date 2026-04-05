@@ -3,7 +3,7 @@ package com.chainsentinel.price.provider.okx;
 import com.chainsentinel.price.api.dto.PriceInstType;
 import com.chainsentinel.price.api.dto.PriceQuery;
 import com.chainsentinel.price.api.dto.PriceQuote;
-import com.chainsentinel.price.config.PriceProperties;
+import com.chainsentinel.price.config.PriceProviderRuntimeConfig;
 import com.chainsentinel.price.provider.PriceProvider;
 import com.chainsentinel.price.provider.okx.dto.OkxTickerResponse;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -28,12 +28,12 @@ public class OkxPriceProvider implements PriceProvider {
             PriceInstType.OPTION
     );
 
-    private final PriceProperties priceProperties;
+    private final PriceProviderRuntimeConfig runtimeConfig;
     private final OkxApiClient okxApiClient;
     private final MeterRegistry meterRegistry;
 
-    public OkxPriceProvider(PriceProperties priceProperties, OkxApiClient okxApiClient, MeterRegistry meterRegistry) {
-        this.priceProperties = priceProperties;
+    public OkxPriceProvider(PriceProviderRuntimeConfig runtimeConfig, OkxApiClient okxApiClient, MeterRegistry meterRegistry) {
+        this.runtimeConfig = runtimeConfig;
         this.okxApiClient = okxApiClient;
         this.meterRegistry = meterRegistry;
     }
@@ -45,7 +45,7 @@ public class OkxPriceProvider implements PriceProvider {
 
     @Override
     public boolean supports(PriceQuery query) {
-        return priceProperties.getOkx().isEnabled()
+        return runtimeConfig.providerEnabled(name())
                 && query != null
                 && StringUtils.hasText(query.symbol())
                 && StringUtils.hasText(query.quoteSymbol())

@@ -6,10 +6,13 @@ import static org.mockito.Mockito.when;
 
 import com.chainsentinel.price.api.dto.PriceInstType;
 import com.chainsentinel.price.api.dto.PriceQuery;
-import com.chainsentinel.price.config.PriceProperties;
+import com.chainsentinel.price.api.dto.PriceQuote;
+import com.chainsentinel.price.config.PriceProviderRuntimeConfig;
 import com.chainsentinel.price.provider.okx.dto.OkxTickerResponse;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,11 +25,11 @@ class OkxPriceProviderTest {
     @Mock
     private OkxApiClient okxApiClient;
 
+    @Mock
+    private PriceProviderRuntimeConfig runtimeConfig;
+
     @Test
     void shouldReturnQuoteWhenOkxResponseIsValid() {
-        PriceProperties properties = new PriceProperties();
-        properties.getOkx().setEnabled(true);
-
         OkxTickerResponse response = new OkxTickerResponse();
         response.setCode("0");
         OkxTickerResponse.OkxTickerData data = new OkxTickerResponse.OkxTickerData();
@@ -35,10 +38,11 @@ class OkxPriceProviderTest {
         data.setTs("1711910400000");
         response.setData(List.of(data));
 
+        when(runtimeConfig.providerEnabled("okx")).thenReturn(true);
         when(okxApiClient.fetchTicker("BTC-USDT")).thenReturn(Optional.of(response));
 
-        OkxPriceProvider provider = new OkxPriceProvider(properties, okxApiClient, new SimpleMeterRegistry());
-        Optional<com.chainsentinel.price.api.dto.PriceQuote> quote = provider.getQuote(
+        OkxPriceProvider provider = new OkxPriceProvider(runtimeConfig, okxApiClient, new SimpleMeterRegistry());
+        Optional<PriceQuote> quote = provider.getQuote(
                 new PriceQuery("ETH", PriceInstType.SPOT, "BTC", "USDT", null)
         );
 
