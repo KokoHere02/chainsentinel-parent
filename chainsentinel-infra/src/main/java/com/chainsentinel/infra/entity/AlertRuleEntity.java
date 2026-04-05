@@ -14,67 +14,67 @@ import jakarta.persistence.Table;
 @Table(name = "alert_rule")
 public class AlertRuleEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
 
-    @Column(name = "name", nullable = false, length = 128)
-    private String name;
+@Column(name = "name", nullable = false, length = 128)
+private String name;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "type", nullable = false, length = 32)
-    private AlertRuleType type;
+@Enumerated(EnumType.STRING)
+@Column(name = "type", nullable = false, length = 32)
+private AlertRuleType type;
 
-    @Column(name = "condition_json", nullable = false, columnDefinition = "json")
-    private String conditionJson;
+@Column(name = "condition_json", nullable = false, columnDefinition = "json")
+private String conditionJson;
 
-    @Column(name = "severity", nullable = false, length = 16)
-    private String severity;
+@Column(name = "severity", nullable = false, length = 16)
+private String severity;
 
-    @Column(name = "enabled", nullable = false)
-    private Boolean enabled;
+@Column(name = "enabled", nullable = false)
+private Boolean enabled;
 
-    public Long getId() {
-        return id;
-    }
+public Long getId() {
+return id;
+}
 
-    public String getName() {
-        return name;
-    }
+public String getName() {
+return name;
+}
 
-    public void setName(String name) {
-        this.name = name;
-    }
+public void setName(String name) {
+this.name = name;
+}
 
-    public AlertRuleType getType() {
-        return type;
-    }
+public AlertRuleType getType() {
+return type;
+}
 
-    public void setType(AlertRuleType type) {
-        this.type = type;
-    }
+public void setType(AlertRuleType type) {
+this.type = type;
+}
 
-    public String getConditionJson() {
-        return conditionJson;
-    }
+public String getConditionJson() {
+return conditionJson;
+}
 
-    public void setConditionJson(String conditionJson) {
-        this.conditionJson = conditionJson;
-    }
+public void setConditionJson(String conditionJson) {
+this.conditionJson = conditionJson;
+}
 
-    public String getSeverity() {
-        return severity;
-    }
+public String getSeverity() {
+return severity;
+}
 
-    public void setSeverity(String severity) {
-        this.severity = severity;
-    }
+public void setSeverity(String severity) {
+this.severity = severity;
+}
 
-    public Boolean getEnabled() {
-        return enabled;
-    }
+public Boolean getEnabled() {
+return enabled;
+}
 
-    public void setEnabled(Boolean enabled) {
-        this.enabled = enabled;
-    }
+public void setEnabled(Boolean enabled) {
+this.enabled = enabled;
+}
 }

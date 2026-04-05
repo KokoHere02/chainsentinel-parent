@@ -10,18 +10,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/internal/rules")
 public class InternalRuleController {
 
-  private final PriceRuleEvaluatorService priceRuleEvaluatorService;
+	private final PriceRuleEvaluatorService priceRuleEvaluatorService;
 
-  public InternalRuleController(PriceRuleEvaluatorService priceRuleEvaluatorService) {
-    this.priceRuleEvaluatorService = priceRuleEvaluatorService;
-  }
+	public InternalRuleController(PriceRuleEvaluatorService priceRuleEvaluatorService) {
+		this.priceRuleEvaluatorService = priceRuleEvaluatorService;
+	}
 
-  @PostMapping("/price/evaluate")
-  public PriceEvaluateResponse evaluatePriceRules() {
-    int created = priceRuleEvaluatorService.evaluateOnce();
-    return new PriceEvaluateResponse(created, Instant.now());
-  }
+	@PostMapping("/price/evaluate")
+	public PriceEvaluateResponse evaluatePriceRules() {
+		int created = priceRuleEvaluatorService.evaluateOnce();
+		return new PriceEvaluateResponse(created, Instant.now());
+	}
 
-  public record PriceEvaluateResponse(int createdCount, Instant executedAt) {
-  }
+	public record PriceEvaluateResponse(int createdCount, Instant executedAt) {
+	}
 }

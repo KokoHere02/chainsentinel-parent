@@ -5,5 +5,5 @@ import com.chainsentinel.core.service.dto.AlertRuleView;
 
 public interface AlertRuleService {
 
-    AlertRuleView create(AlertRuleCreateCommand command);
+	AlertRuleView create(AlertRuleCreateCommand command);
 }

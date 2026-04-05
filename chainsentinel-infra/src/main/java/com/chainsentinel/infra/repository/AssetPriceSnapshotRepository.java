@@ -8,28 +8,28 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AssetPriceSnapshotRepository extends JpaRepository<AssetPriceSnapshotEntity, Long> {
 
-  Optional<AssetPriceSnapshotEntity> findByAssetIdAndProviderNameAndInstTypeAndInstIdAndBucketTs(
-    Long assetId,
-    String providerName,
-    String instType,
-    String instId,
-    LocalDateTime bucketTs
-  );
+Optional<AssetPriceSnapshotEntity> findByAssetIdAndProviderNameAndInstTypeAndInstIdAndBucketTs(
+Long assetId,
+String providerName,
+String instType,
+String instId,
+LocalDateTime bucketTs
+);
 
-  Optional<AssetPriceSnapshotEntity> findTopByAssetIdOrderByBucketTsDesc(Long assetId);
+Optional<AssetPriceSnapshotEntity> findTopByAssetIdOrderByBucketTsDesc(Long assetId);
 
-  Optional<AssetPriceSnapshotEntity> findTopByInstIdOrderByBucketTsDesc(String instId);
+Optional<AssetPriceSnapshotEntity> findTopByInstIdOrderByBucketTsDesc(String instId);
 
-  Optional<AssetPriceSnapshotEntity> findTopByAssetIdAndProviderNameAndInstIdOrderByBucketTsDesc(
-    Long assetId,
-    String providerName,
-    String instId
-  );
+Optional<AssetPriceSnapshotEntity> findTopByAssetIdAndProviderNameAndInstIdOrderByBucketTsDesc(
+Long assetId,
+String providerName,
+String instId
+);
 
-  List<AssetPriceSnapshotEntity> findTop200ByProviderNameAndInstIdAndBucketTsBetweenOrderByBucketTsDesc(
-    String providerName,
-    String instId,
-    LocalDateTime from,
-    LocalDateTime to
-  );
+List<AssetPriceSnapshotEntity> findTop200ByProviderNameAndInstIdAndBucketTsBetweenOrderByBucketTsDesc(
+String providerName,
+String instId,
+LocalDateTime from,
+LocalDateTime to
+);
 }

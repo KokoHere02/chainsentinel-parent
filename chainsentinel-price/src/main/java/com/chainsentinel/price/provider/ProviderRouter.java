@@ -12,27 +12,27 @@ import org.springframework.stereotype.Component;
 @Component
 public class ProviderRouter {
 
-    private final List<PriceProvider> providers;
+	private final List<PriceProvider> providers;
 
-    public ProviderRouter(List<PriceProvider> providers) {
-        this.providers = providers;
-    }
+	public ProviderRouter(List<PriceProvider> providers) {
+		this.providers = providers;
+	}
 
-    public Optional<PriceQuote> getQuote(PriceQuery query, Map<String, Integer> providerPriority) {
-        List<PriceProvider> candidates = new ArrayList<>();
-        for (PriceProvider provider : providers) {
-            if (provider.supports(query)) {
-                candidates.add(provider);
-            }
-        }
-        candidates.sort(Comparator.comparingInt(p -> providerPriority.getOrDefault(p.name(), Integer.MAX_VALUE)));
+	public Optional<PriceQuote> getQuote(PriceQuery query, Map<String, Integer> providerPriority) {
+		List<PriceProvider> candidates = new ArrayList<>();
+		for (PriceProvider provider : providers) {
+			if (provider.supports(query)) {
+				candidates.add(provider);
+			}
+		}
+		candidates.sort(Comparator.comparingInt(p -> providerPriority.getOrDefault(p.name(), Integer.MAX_VALUE)));
 
-        for (PriceProvider provider : candidates) {
-            Optional<PriceQuote> quote = provider.getQuote(query);
-            if (quote.isPresent()) {
-                return quote;
-            }
-        }
-        return Optional.empty();
-    }
+		for (PriceProvider provider : candidates) {
+			Optional<PriceQuote> quote = provider.getQuote(query);
+			if (quote.isPresent()) {
+				return quote;
+			}
+		}
+		return Optional.empty();
+	}
 }

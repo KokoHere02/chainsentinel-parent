@@ -10,51 +10,51 @@ import org.springframework.stereotype.Component;
 @Component
 public class RuleConditionJsonParser {
 
-  private final ObjectMapper objectMapper;
-  private final EventRuleConditionParser eventRuleConditionParser;
-  private final PriceRuleConditionParser priceRuleConditionParser;
+private final ObjectMapper objectMapper;
+private final EventRuleConditionParser eventRuleConditionParser;
+private final PriceRuleConditionParser priceRuleConditionParser;
 
-  public RuleConditionJsonParser(
-    ObjectMapper objectMapper,
-    EventRuleConditionParser eventRuleConditionParser,
-    PriceRuleConditionParser priceRuleConditionParser
-  ) {
-    this.objectMapper = objectMapper;
-    this.eventRuleConditionParser = eventRuleConditionParser;
-    this.priceRuleConditionParser = priceRuleConditionParser;
-  }
+public RuleConditionJsonParser(
+ObjectMapper objectMapper,
+EventRuleConditionParser eventRuleConditionParser,
+PriceRuleConditionParser priceRuleConditionParser
+) {
+this.objectMapper = objectMapper;
+this.eventRuleConditionParser = eventRuleConditionParser;
+this.priceRuleConditionParser = priceRuleConditionParser;
+}
 
-  public String serialize(AlertRuleType type, JsonNode condition) {
-    if (type == null) {
-      throw new IllegalArgumentException("Rule type is required");
-    }
-    if (condition == null || condition.isNull()) {
-      throw new IllegalArgumentException("condition is required");
-    }
-    return switch (type) {
-      case ADDRESS, AMOUNT -> eventRuleConditionParser.serialize(toEventRuleSpec(condition));
-      case PRICE_THRESHOLD -> priceRuleConditionParser.serialize(toPriceRuleSpec(condition));
-      default -> throw new IllegalArgumentException("Unsupported rule type for parser: " + type);
-    };
-  }
+public String serialize(AlertRuleType type, JsonNode condition) {
+if (type == null) {
+throw new IllegalArgumentException("Rule type is required");
+}
+if (condition == null || condition.isNull()) {
+throw new IllegalArgumentException("condition is required");
+}
+return switch (type) {
+case ADDRESS, AMOUNT -> eventRuleConditionParser.serialize(toEventRuleSpec(condition));
+case PRICE_THRESHOLD -> priceRuleConditionParser.serialize(toPriceRuleSpec(condition));
+default -> throw new IllegalArgumentException("Unsupported rule type for parser: " + type);
+};
+}
 
-  public EventRuleSpec parseEvent(String conditionJson) {
-    return eventRuleConditionParser.parse(conditionJson);
-  }
+public EventRuleSpec parseEvent(String conditionJson) {
+return eventRuleConditionParser.parse(conditionJson);
+}
 
-  public PriceRuleSpec parsePrice(String conditionJson) {
-    return priceRuleConditionParser.parse(conditionJson);
-  }
+public PriceRuleSpec parsePrice(String conditionJson) {
+return priceRuleConditionParser.parse(conditionJson);
+}
 
-  public boolean matchPrice(PriceRuleSpec spec, java.math.BigDecimal currentPrice) {
-    return priceRuleConditionParser.matches(spec, currentPrice);
-  }
+public boolean matchPrice(PriceRuleSpec spec, java.math.BigDecimal currentPrice) {
+return priceRuleConditionParser.matches(spec, currentPrice);
+}
 
-  private EventRuleSpec toEventRuleSpec(JsonNode node) {
-    return objectMapper.convertValue(node, EventRuleSpec.class);
-  }
+private EventRuleSpec toEventRuleSpec(JsonNode node) {
+return objectMapper.convertValue(node, EventRuleSpec.class);
+}
 
-  private PriceRuleSpec toPriceRuleSpec(JsonNode node) {
-    return objectMapper.convertValue(node, PriceRuleSpec.class);
-  }
+private PriceRuleSpec toPriceRuleSpec(JsonNode node) {
+return objectMapper.convertValue(node, PriceRuleSpec.class);
+}
 }

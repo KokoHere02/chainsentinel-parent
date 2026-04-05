@@ -7,11 +7,11 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ChainConfigRepository extends JpaRepository<ChainConfigEntity, Long> {
 
-  Optional<ChainConfigEntity> findByChainAndNetwork(String chain, String network);
+Optional<ChainConfigEntity> findByChainAndNetwork(String chain, String network);
 
-  List<ChainConfigEntity> findByChainAndEnabledTrue(String chain);
+List<ChainConfigEntity> findByChainAndEnabledTrue(String chain);
 
-  List<ChainConfigEntity> findByEnabledTrue();
+List<ChainConfigEntity> findByEnabledTrue();
 
-  List<ChainConfigEntity> findAllByOrderByChainAscNetworkAsc();
+List<ChainConfigEntity> findAllByOrderByChainAscNetworkAsc();
 }

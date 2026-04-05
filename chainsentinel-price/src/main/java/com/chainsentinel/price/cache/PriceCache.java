@@ -6,7 +6,7 @@ import java.util.Optional;
 
 public interface PriceCache {
 
-    Optional<PriceQuote> get(PriceQuery query);
+	Optional<PriceQuote> get(PriceQuery query);
 
-    void put(PriceQuery query, PriceQuote quote);
+	void put(PriceQuery query, PriceQuote quote);
 }

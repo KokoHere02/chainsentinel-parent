@@ -19,24 +19,24 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/events")
 public class EventController {
 
-    private final EventQueryService eventQueryService;
+	private final EventQueryService eventQueryService;
 
-    public EventController(EventQueryService eventQueryService) {
-        this.eventQueryService = eventQueryService;
-    }
+	public EventController(EventQueryService eventQueryService) {
+		this.eventQueryService = eventQueryService;
+	}
 
-    @GetMapping
-    public Page<EventView> list(
-            @RequestParam(name = "chain", required = false) String chain,
-            @RequestParam(name = "address", required = false) String address,
-            @RequestParam(name = "status", required = false) EventStatus status,
-            @RequestParam(name = "startTime", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startTime,
-            @RequestParam(name = "endTime", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endTime,
-            @RequestParam(name = "page", defaultValue = "0") int page,
-            @RequestParam(name = "size", defaultValue = "20") int size
-    ) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "blockNumber"));
-        EventQuery query = new EventQuery(chain, address, status, startTime, endTime);
-        return eventQueryService.query(query, pageable);
-    }
+	@GetMapping
+	public Page<EventView> list(
+		@RequestParam(name = "chain", required = false) String chain,
+		@RequestParam(name = "address", required = false) String address,
+		@RequestParam(name = "status", required = false) EventStatus status,
+		@RequestParam(name = "startTime", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startTime,
+		@RequestParam(name = "endTime", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endTime,
+		@RequestParam(name = "page", defaultValue = "0") int page,
+		@RequestParam(name = "size", defaultValue = "20") int size
+	) {
+		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "blockNumber"));
+		EventQuery query = new EventQuery(chain, address, status, startTime, endTime);
+		return eventQueryService.query(query, pageable);
+	}
 }

@@ -5,5 +5,5 @@ import com.chainsentinel.core.service.dto.MonitorTokenView;
 
 public interface MonitorTokenService {
 
-    MonitorTokenView upsert(MonitorTokenUpsertCommand command);
+	MonitorTokenView upsert(MonitorTokenUpsertCommand command);
 }

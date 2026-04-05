@@ -17,34 +17,34 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class TokenController {
 
-  private final MonitorTokenService monitorTokenService;
+	private final MonitorTokenService monitorTokenService;
 
-  public TokenController(MonitorTokenService monitorTokenService) {
-    this.monitorTokenService = monitorTokenService;
-  }
+	public TokenController(MonitorTokenService monitorTokenService) {
+		this.monitorTokenService = monitorTokenService;
+	}
 
-  @PostMapping
-  public MonitorTokenView upsert(@RequestBody @Valid TokenUpsertRequest request) {
-    return monitorTokenService.upsert(new MonitorTokenUpsertCommand(
-      request.chain(),
-      request.tokenContract(),
-      request.symbol(),
-      request.enabled()
-    ));
-  }
+	@PostMapping
+	public MonitorTokenView upsert(@RequestBody @Valid TokenUpsertRequest request) {
+		return monitorTokenService.upsert(new MonitorTokenUpsertCommand(
+			request.chain(),
+			request.tokenContract(),
+			request.symbol(),
+			request.enabled()
+		));
+	}
 
-  public record TokenUpsertRequest(
-    @NotBlank String chain,
-    @NotBlank String tokenContract,
-    String symbol,
-    Boolean enabled
-  ) {
-    public TokenUpsertRequest {
-      if (enabled == null) {
-        enabled = true;
-      }
-    }
+	public record TokenUpsertRequest(
+		@NotBlank String chain,
+		@NotBlank String tokenContract,
+		String symbol,
+		Boolean enabled
+	) {
+		public TokenUpsertRequest {
+			if (enabled == null) {
+				enabled = true;
+			}
+		}
 
-  }
+	}
 
 }

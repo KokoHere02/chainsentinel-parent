@@ -2,7 +2,7 @@ package com.chainsentinel.core.service;
 
 public interface AlertDispatchService {
 
-    int dispatchPending();
+	int dispatchPending();
 
-    boolean retryOne(Long alertId);
+	boolean retryOne(Long alertId);
 }

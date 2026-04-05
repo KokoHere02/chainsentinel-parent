@@ -19,34 +19,34 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class RuleController {
 
-  private final AlertRuleService alertRuleService;
+	private final AlertRuleService alertRuleService;
 
-  public RuleController(AlertRuleService alertRuleService) {
-    this.alertRuleService = alertRuleService;
-  }
+	public RuleController(AlertRuleService alertRuleService) {
+		this.alertRuleService = alertRuleService;
+	}
 
-  @PostMapping
-  public AlertRuleView create(@RequestBody @Valid RuleCreateRequest request) {
-    return alertRuleService.create(new AlertRuleCreateCommand(
-      request.name(),
-      request.type(),
-      request.condition(),
-      request.severity(),
-      request.enabled()
-    ));
-  }
+	@PostMapping
+	public AlertRuleView create(@RequestBody @Valid RuleCreateRequest request) {
+		return alertRuleService.create(new AlertRuleCreateCommand(
+			request.name(),
+			request.type(),
+			request.condition(),
+			request.severity(),
+			request.enabled()
+		));
+	}
 
-  public record RuleCreateRequest(
-    @NotBlank String name,
-    @NotNull AlertRuleType type,
-    @NotNull JsonNode condition,
-    @NotBlank String severity,
-    Boolean enabled
-  ) {
-    public RuleCreateRequest {
-      if (enabled == null) {
-        enabled = true;
-      }
-    }
-  }
+	public record RuleCreateRequest(
+		@NotBlank String name,
+		@NotNull AlertRuleType type,
+		@NotNull JsonNode condition,
+		@NotBlank String severity,
+		Boolean enabled
+	) {
+		public RuleCreateRequest {
+			if (enabled == null) {
+				enabled = true;
+			}
+		}
+	}
 }

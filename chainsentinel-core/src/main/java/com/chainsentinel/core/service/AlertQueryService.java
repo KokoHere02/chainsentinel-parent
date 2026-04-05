@@ -7,5 +7,5 @@ import org.springframework.data.domain.Pageable;
 
 public interface AlertQueryService {
 
-    Page<AlertView> query(AlertQuery query, Pageable pageable);
+	Page<AlertView> query(AlertQuery query, Pageable pageable);
 }

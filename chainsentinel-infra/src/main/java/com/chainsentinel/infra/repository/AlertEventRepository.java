@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 public interface AlertEventRepository extends JpaRepository<AlertEventEntity, Long>, JpaSpecificationExecutor<AlertEventEntity> {
 
-    boolean existsByRuleIdAndAssetEventId(Long ruleId, Long assetEventId);
+boolean existsByRuleIdAndAssetEventId(Long ruleId, Long assetEventId);
 
-    List<AlertEventEntity> findTop100BySendStatusOrderByIdAsc(String sendStatus);
+List<AlertEventEntity> findTop100BySendStatusOrderByIdAsc(String sendStatus);
 }

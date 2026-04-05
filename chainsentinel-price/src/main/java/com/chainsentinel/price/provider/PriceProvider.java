@@ -6,9 +6,9 @@ import java.util.Optional;
 
 public interface PriceProvider {
 
-    String name();
+	String name();
 
-    boolean supports(PriceQuery query);
+	boolean supports(PriceQuery query);
 
-    Optional<PriceQuote> getQuote(PriceQuery query);
+	Optional<PriceQuote> getQuote(PriceQuery query);
 }

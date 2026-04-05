@@ -6,5 +6,5 @@ import java.util.Optional;
 
 public interface PriceService {
 
-    Optional<PriceQuote> getQuote(PriceQuery query);
+	Optional<PriceQuote> getQuote(PriceQuery query);
 }

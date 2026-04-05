@@ -14,72 +14,72 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class DefaultPriceSnapshotService implements PriceSnapshotService {
 
-  private final AssetPriceSnapshotRepository assetPriceSnapshotRepository;
+private final AssetPriceSnapshotRepository assetPriceSnapshotRepository;
 
-  public DefaultPriceSnapshotService(AssetPriceSnapshotRepository assetPriceSnapshotRepository) {
-    this.assetPriceSnapshotRepository = assetPriceSnapshotRepository;
-  }
+public DefaultPriceSnapshotService(AssetPriceSnapshotRepository assetPriceSnapshotRepository) {
+this.assetPriceSnapshotRepository = assetPriceSnapshotRepository;
+}
 
-  @Override
-  @Transactional
-  public PriceSnapshotView upsertMinuteSnapshot(PriceSnapshotUpsertCommand command) {
-    AssetPriceSnapshotEntity entity = assetPriceSnapshotRepository
-      .findByAssetIdAndProviderNameAndInstTypeAndInstIdAndBucketTs(
-        command.assetId(),
-        command.providerName(),
-        command.instType(),
-        command.instId(),
-        command.bucketTs()
-      )
-      .orElseGet(AssetPriceSnapshotEntity::new);
+@Override
+@Transactional
+public PriceSnapshotView upsertMinuteSnapshot(PriceSnapshotUpsertCommand command) {
+AssetPriceSnapshotEntity entity = assetPriceSnapshotRepository
+.findByAssetIdAndProviderNameAndInstTypeAndInstIdAndBucketTs(
+command.assetId(),
+command.providerName(),
+command.instType(),
+command.instId(),
+command.bucketTs()
+)
+.orElseGet(AssetPriceSnapshotEntity::new);
 
-    entity.setAssetId(command.assetId());
-    entity.setProviderName(command.providerName());
-    entity.setInstType(command.instType());
-    entity.setInstId(command.instId());
-    entity.setQuoteSymbol(command.quoteSymbol());
-    entity.setPrice(command.price());
-    entity.setBucketTs(command.bucketTs());
-    entity.setQuotedAt(command.quotedAt());
+entity.setAssetId(command.assetId());
+entity.setProviderName(command.providerName());
+entity.setInstType(command.instType());
+entity.setInstId(command.instId());
+entity.setQuoteSymbol(command.quoteSymbol());
+entity.setPrice(command.price());
+entity.setBucketTs(command.bucketTs());
+entity.setQuotedAt(command.quotedAt());
 
-    AssetPriceSnapshotEntity saved = assetPriceSnapshotRepository.save(entity);
-    return toView(saved);
-  }
+AssetPriceSnapshotEntity saved = assetPriceSnapshotRepository.save(entity);
+return toView(saved);
+}
 
-  @Override
-  @Transactional(readOnly = true)
-  public Optional<PriceSnapshotView> findLatestByAssetId(Long assetId) {
-    return assetPriceSnapshotRepository.findTopByAssetIdOrderByBucketTsDesc(assetId)
-      .map(this::toView);
-  }
+@Override
+@Transactional(readOnly = true)
+public Optional<PriceSnapshotView> findLatestByAssetId(Long assetId) {
+return assetPriceSnapshotRepository.findTopByAssetIdOrderByBucketTsDesc(assetId)
+.map(this::toView);
+}
 
-  @Override
-  @Transactional(readOnly = true)
-  public List<PriceSnapshotView> findRecentByProviderAndInstId(
-    String providerName,
-    String instId,
-    LocalDateTime from,
-    LocalDateTime to,
-    int limit
-  ) {
-    List<AssetPriceSnapshotEntity> rows = assetPriceSnapshotRepository
-      .findTop200ByProviderNameAndInstIdAndBucketTsBetweenOrderByBucketTsDesc(providerName, instId, from, to);
-    int safeLimit = Math.max(1, limit);
-    return rows.stream().limit(safeLimit).map(this::toView).toList();
-  }
+@Override
+@Transactional(readOnly = true)
+public List<PriceSnapshotView> findRecentByProviderAndInstId(
+String providerName,
+String instId,
+LocalDateTime from,
+LocalDateTime to,
+int limit
+) {
+List<AssetPriceSnapshotEntity> rows = assetPriceSnapshotRepository
+.findTop200ByProviderNameAndInstIdAndBucketTsBetweenOrderByBucketTsDesc(providerName, instId, from, to);
+int safeLimit = Math.max(1, limit);
+return rows.stream().limit(safeLimit).map(this::toView).toList();
+}
 
-  private PriceSnapshotView toView(AssetPriceSnapshotEntity entity) {
-    return new PriceSnapshotView(
-      entity.getId(),
-      entity.getAssetId(),
-      entity.getProviderName(),
-      entity.getInstType(),
-      entity.getInstId(),
-      entity.getQuoteSymbol(),
-      entity.getPrice(),
-      entity.getBucketTs(),
-      entity.getQuotedAt(),
-      entity.getFetchedAt()
-    );
-  }
+private PriceSnapshotView toView(AssetPriceSnapshotEntity entity) {
+return new PriceSnapshotView(
+entity.getId(),
+entity.getAssetId(),
+entity.getProviderName(),
+entity.getInstType(),
+entity.getInstId(),
+entity.getQuoteSymbol(),
+entity.getPrice(),
+entity.getBucketTs(),
+entity.getQuotedAt(),
+entity.getFetchedAt()
+);
+}
 }

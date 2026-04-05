@@ -10,18 +10,18 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/internal/runtime-config")
 public class InternalRuntimeConfigController {
 
-  private final PriceProviderRuntimeConfig priceProviderRuntimeConfig;
+	private final PriceProviderRuntimeConfig priceProviderRuntimeConfig;
 
-  public InternalRuntimeConfigController(PriceProviderRuntimeConfig priceProviderRuntimeConfig) {
-    this.priceProviderRuntimeConfig = priceProviderRuntimeConfig;
-  }
+	public InternalRuntimeConfigController(PriceProviderRuntimeConfig priceProviderRuntimeConfig) {
+		this.priceProviderRuntimeConfig = priceProviderRuntimeConfig;
+	}
 
-  @PostMapping("/price/refresh")
-  public RefreshResponse refreshPriceRuntimeConfigCache() {
-    priceProviderRuntimeConfig.refreshCache();
-    return new RefreshResponse(true, Instant.now());
-  }
+	@PostMapping("/price/refresh")
+	public RefreshResponse refreshPriceRuntimeConfigCache() {
+		priceProviderRuntimeConfig.refreshCache();
+		return new RefreshResponse(true, Instant.now());
+	}
 
-  public record RefreshResponse(boolean refreshed, Instant refreshedAt) {
-  }
+	public record RefreshResponse(boolean refreshed, Instant refreshedAt) {
+	}
 }

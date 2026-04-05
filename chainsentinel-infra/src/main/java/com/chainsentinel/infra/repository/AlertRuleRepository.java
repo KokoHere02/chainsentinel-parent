@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AlertRuleRepository extends JpaRepository<AlertRuleEntity, Long> {
 
-    List<AlertRuleEntity> findByTypeAndEnabledTrue(AlertRuleType type);
+List<AlertRuleEntity> findByTypeAndEnabledTrue(AlertRuleType type);
 
-    List<AlertRuleEntity> findByEnabledTrue();
+List<AlertRuleEntity> findByEnabledTrue();
 }

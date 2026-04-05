@@ -7,6 +7,6 @@ import org.springframework.data.domain.Pageable;
 
 public interface EventQueryService {
 
-    Page<EventView> query(EventQuery query, Pageable pageable);
+	Page<EventView> query(EventQuery query, Pageable pageable);
 }
 

@@ -14,7 +14,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EntityScan(basePackages = "com.chainsentinel.infra.entity")
 public class ChainSentinelApplication {
 
-    public static void main(String[] args) {
-        SpringApplication.run(ChainSentinelApplication.class, args);
-    }
+	public static void main(String[] args) {
+		SpringApplication.run(ChainSentinelApplication.class, args);
+	}
 }

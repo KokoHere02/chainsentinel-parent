@@ -10,11 +10,11 @@ import org.springframework.util.StringUtils;
 @EnableConfigurationProperties(CryptoProperties.class)
 public class CryptoConfiguration {
 
-    @Bean
-    public AesGcmCryptoUtil aesGcmCryptoUtil(CryptoProperties properties) {
-        if (!StringUtils.hasText(properties.getKeyBase64())) {
-            throw new IllegalStateException("chainsentinel.security.crypto.key-base64 must be configured");
-        }
-        return AesGcmCryptoUtil.fromBase64Key(properties.getKeyBase64());
-    }
+	@Bean
+	public AesGcmCryptoUtil aesGcmCryptoUtil(CryptoProperties properties) {
+		if (!StringUtils.hasText(properties.getKeyBase64())) {
+			throw new IllegalStateException("chainsentinel.security.crypto.key-base64 must be configured");
+		}
+		return AesGcmCryptoUtil.fromBase64Key(properties.getKeyBase64());
+	}
 }

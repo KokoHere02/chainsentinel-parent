@@ -6,5 +6,5 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ScanCheckpointRepository extends JpaRepository<ScanCheckpointEntity, Long> {
 
-    Optional<ScanCheckpointEntity> findByChainAndNetwork(String chain, String network);
+Optional<ScanCheckpointEntity> findByChainAndNetwork(String chain, String network);
 }

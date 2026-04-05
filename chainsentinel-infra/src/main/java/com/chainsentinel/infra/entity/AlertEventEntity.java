@@ -12,88 +12,88 @@ import java.time.Instant;
 @Table(name = "alert_event")
 public class AlertEventEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@Id
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+private Long id;
 
-    @Column(name = "rule_id", nullable = false)
-    private Long ruleId;
+@Column(name = "rule_id", nullable = false)
+private Long ruleId;
 
-    @Column(name = "asset_event_id")
-    private Long assetEventId;
+@Column(name = "asset_event_id")
+private Long assetEventId;
 
-    @Column(name = "severity", nullable = false, length = 16)
-    private String severity;
+@Column(name = "severity", nullable = false, length = 16)
+private String severity;
 
-    @Column(name = "send_status", nullable = false, length = 16)
-    private String sendStatus;
+@Column(name = "send_status", nullable = false, length = 16)
+private String sendStatus;
 
-    @Column(name = "retry_count", nullable = false)
-    private Integer retryCount;
+@Column(name = "retry_count", nullable = false)
+private Integer retryCount;
 
-    @Column(name = "last_error", length = 1024)
-    private String lastError;
+@Column(name = "last_error", length = 1024)
+private String lastError;
 
-    @Column(name = "sent_at")
-    private Instant sentAt;
+@Column(name = "sent_at")
+private Instant sentAt;
 
-    public Long getId() {
-        return id;
-    }
+public Long getId() {
+return id;
+}
 
-    public Long getRuleId() {
-        return ruleId;
-    }
+public Long getRuleId() {
+return ruleId;
+}
 
-    public void setRuleId(Long ruleId) {
-        this.ruleId = ruleId;
-    }
+public void setRuleId(Long ruleId) {
+this.ruleId = ruleId;
+}
 
-    public Long getAssetEventId() {
-        return assetEventId;
-    }
+public Long getAssetEventId() {
+return assetEventId;
+}
 
-    public void setAssetEventId(Long assetEventId) {
-        this.assetEventId = assetEventId;
-    }
+public void setAssetEventId(Long assetEventId) {
+this.assetEventId = assetEventId;
+}
 
-    public String getSeverity() {
-        return severity;
-    }
+public String getSeverity() {
+return severity;
+}
 
-    public void setSeverity(String severity) {
-        this.severity = severity;
-    }
+public void setSeverity(String severity) {
+this.severity = severity;
+}
 
-    public String getSendStatus() {
-        return sendStatus;
-    }
+public String getSendStatus() {
+return sendStatus;
+}
 
-    public void setSendStatus(String sendStatus) {
-        this.sendStatus = sendStatus;
-    }
+public void setSendStatus(String sendStatus) {
+this.sendStatus = sendStatus;
+}
 
-    public Integer getRetryCount() {
-        return retryCount;
-    }
+public Integer getRetryCount() {
+return retryCount;
+}
 
-    public void setRetryCount(Integer retryCount) {
-        this.retryCount = retryCount;
-    }
+public void setRetryCount(Integer retryCount) {
+this.retryCount = retryCount;
+}
 
-    public String getLastError() {
-        return lastError;
-    }
+public String getLastError() {
+return lastError;
+}
 
-    public void setLastError(String lastError) {
-        this.lastError = lastError;
-    }
+public void setLastError(String lastError) {
+this.lastError = lastError;
+}
 
-    public Instant getSentAt() {
-        return sentAt;
-    }
+public Instant getSentAt() {
+return sentAt;
+}
 
-    public void setSentAt(Instant sentAt) {
-        this.sentAt = sentAt;
-    }
+public void setSentAt(Instant sentAt) {
+this.sentAt = sentAt;
+}
 }

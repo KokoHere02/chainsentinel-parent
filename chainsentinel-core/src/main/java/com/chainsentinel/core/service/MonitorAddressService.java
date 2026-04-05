@@ -5,5 +5,5 @@ import com.chainsentinel.core.service.dto.MonitorAddressView;
 
 public interface MonitorAddressService {
 
-    MonitorAddressView upsert(MonitorAddressUpsertCommand command);
+	MonitorAddressView upsert(MonitorAddressUpsertCommand command);
 }

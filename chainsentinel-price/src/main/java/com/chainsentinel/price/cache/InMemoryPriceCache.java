@@ -10,19 +10,19 @@ import org.springframework.stereotype.Component;
 @Component
 public class InMemoryPriceCache implements PriceCache {
 
-    private final Map<String, PriceQuote> cache = new ConcurrentHashMap<>();
+	private final Map<String, PriceQuote> cache = new ConcurrentHashMap<>();
 
-    @Override
-    public Optional<PriceQuote> get(PriceQuery query) {
-        return Optional.ofNullable(cache.get(cacheKey(query)));
-    }
+	@Override
+	public Optional<PriceQuote> get(PriceQuery query) {
+		return Optional.ofNullable(cache.get(cacheKey(query)));
+	}
 
-    @Override
-    public void put(PriceQuery query, PriceQuote quote) {
-        cache.put(cacheKey(query), quote);
-    }
+	@Override
+	public void put(PriceQuery query, PriceQuote quote) {
+		cache.put(cacheKey(query), quote);
+	}
 
-    private String cacheKey(PriceQuery query) {
-        return query.chain() + "|" + query.normalizedInstId();
-    }
+	private String cacheKey(PriceQuery query) {
+		return query.chain() + "|" + query.normalizedInstId();
+	}
 }

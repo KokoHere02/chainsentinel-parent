@@ -7,7 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MonitorTokenRepository extends JpaRepository<MonitorTokenEntity, Long> {
 
-    Optional<MonitorTokenEntity> findByChainAndTokenContract(String chain, String tokenContract);
+Optional<MonitorTokenEntity> findByChainAndTokenContract(String chain, String tokenContract);
 
-    List<MonitorTokenEntity> findByChainAndEnabledTrue(String chain);
+List<MonitorTokenEntity> findByChainAndEnabledTrue(String chain);
 }

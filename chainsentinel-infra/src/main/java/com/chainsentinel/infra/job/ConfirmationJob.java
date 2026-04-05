@@ -12,31 +12,31 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "chainsentinel.confirmation", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ConfirmationJob {
 
-    private static final Logger log = LoggerFactory.getLogger(ConfirmationJob.class);
+private static final Logger log = LoggerFactory.getLogger(ConfirmationJob.class);
 
-    private final EventConfirmationService eventConfirmationService;
-    private final AtomicBoolean running = new AtomicBoolean(false);
+private final EventConfirmationService eventConfirmationService;
+private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public ConfirmationJob(EventConfirmationService eventConfirmationService) {
-        this.eventConfirmationService = eventConfirmationService;
-    }
+public ConfirmationJob(EventConfirmationService eventConfirmationService) {
+this.eventConfirmationService = eventConfirmationService;
+}
 
-    @Scheduled(
-            fixedDelayString = "${chainsentinel.confirmation.interval-ms:20000}",
-            initialDelayString = "${chainsentinel.confirmation.initial-delay-ms:5000}"
-    )
-    public void run() {
-        if (!running.compareAndSet(false, true)) {
-            log.warn("Skip confirmation run because previous run is still in progress");
-            return;
-        }
-        try {
-            int updated = eventConfirmationService.advancePendingConfirmations();
-            log.info("Confirmation job finished: updated={}", updated);
-        } catch (Exception ex) {
-            log.error("Confirmation job failed", ex);
-        } finally {
-            running.set(false);
-        }
-    }
+@Scheduled(
+fixedDelayString = "${chainsentinel.confirmation.interval-ms:20000}",
+initialDelayString = "${chainsentinel.confirmation.initial-delay-ms:5000}"
+)
+public void run() {
+if (!running.compareAndSet(false, true)) {
+log.warn("Skip confirmation run because previous run is still in progress");
+return;
+}
+try {
+int updated = eventConfirmationService.advancePendingConfirmations();
+log.info("Confirmation job finished: updated={}", updated);
+} catch (Exception ex) {
+log.error("Confirmation job failed", ex);
+} finally {
+running.set(false);
+}
+}
 }

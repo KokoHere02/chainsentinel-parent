@@ -7,9 +7,9 @@ import java.util.Optional;
 
 public interface ChainConfigService {
 
-  ChainConfigView upsert(ChainConfigUpsertCommand command);
+	ChainConfigView upsert(ChainConfigUpsertCommand command);
 
-  List<ChainConfigView> list();
+	List<ChainConfigView> list();
 
-  Optional<ChainConfigView> find(String chain, String network);
+	Optional<ChainConfigView> find(String chain, String network);
 }

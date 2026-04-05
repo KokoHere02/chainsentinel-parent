@@ -23,38 +23,38 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/alerts")
 public class AlertController {
 
-  private final AlertQueryService alertQueryService;
-  private final AlertDispatchService alertDispatchService;
+	private final AlertQueryService alertQueryService;
+	private final AlertDispatchService alertDispatchService;
 
-  public AlertController(AlertQueryService alertQueryService, AlertDispatchService alertDispatchService) {
-    this.alertQueryService = alertQueryService;
-    this.alertDispatchService = alertDispatchService;
-  }
+	public AlertController(AlertQueryService alertQueryService, AlertDispatchService alertDispatchService) {
+		this.alertQueryService = alertQueryService;
+		this.alertDispatchService = alertDispatchService;
+	}
 
-  @GetMapping
-  public Page<AlertView> list(
-    @RequestParam(name = "sendStatus", required = false) String sendStatus,
-    @RequestParam(name = "severity", required = false) String severity,
-    @RequestParam(name = "ruleId", required = false) Long ruleId,
-    @RequestParam(name = "page", defaultValue = "0") int page,
-    @RequestParam(name = "size", defaultValue = "20") int size
-  ) {
-    Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
-    return alertQueryService.query(new AlertQuery(sendStatus, severity, ruleId), pageable);
-  }
+	@GetMapping
+	public Page<AlertView> list(
+		@RequestParam(name = "sendStatus", required = false) String sendStatus,
+		@RequestParam(name = "severity", required = false) String severity,
+		@RequestParam(name = "ruleId", required = false) Long ruleId,
+		@RequestParam(name = "page", defaultValue = "0") int page,
+		@RequestParam(name = "size", defaultValue = "20") int size
+	) {
+		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+		return alertQueryService.query(new AlertQuery(sendStatus, severity, ruleId), pageable);
+	}
 
-  @PostMapping("/retry/{id}")
-  public RetryResponse retry(@PathVariable("id") Long id) {
-    boolean ok = alertDispatchService.retryOne(id);
-    return new RetryResponse(ok);
-  }
+	@PostMapping("/retry/{id}")
+	public RetryResponse retry(@PathVariable("id") Long id) {
+		boolean ok = alertDispatchService.retryOne(id);
+		return new RetryResponse(ok);
+	}
 
-  @PostMapping("/handler")
-  public Map<String, String> handlerAlert(@RequestBody String json) {
-    log.info("handler Alert Received: {}", json);
-    return Map.of("code", "200");
-  }
+	@PostMapping("/handler")
+	public Map<String, String> handlerAlert(@RequestBody String json) {
+		log.info("handler Alert Received: {}", json);
+		return Map.of("code", "200");
+	}
 
-  public record RetryResponse(boolean success) {
-  }
+	public record RetryResponse(boolean success) {
+	}
 }

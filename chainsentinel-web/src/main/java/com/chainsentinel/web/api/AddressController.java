@@ -16,32 +16,32 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 public class AddressController {
 
-    private final MonitorAddressService monitorAddressService;
+	private final MonitorAddressService monitorAddressService;
 
-    public AddressController(MonitorAddressService monitorAddressService) {
-        this.monitorAddressService = monitorAddressService;
-    }
+	public AddressController(MonitorAddressService monitorAddressService) {
+		this.monitorAddressService = monitorAddressService;
+	}
 
-    @PostMapping
-    public MonitorAddressView upsert(@RequestBody @Valid AddressUpsertRequest request) {
-        return monitorAddressService.upsert(new MonitorAddressUpsertCommand(
-                request.chain(),
-                request.address(),
-                request.tag(),
-                request.enabled()
-        ));
-    }
+	@PostMapping
+	public MonitorAddressView upsert(@RequestBody @Valid AddressUpsertRequest request) {
+		return monitorAddressService.upsert(new MonitorAddressUpsertCommand(
+		request.chain(),
+		request.address(),
+		request.tag(),
+		request.enabled()
+		));
+	}
 
-    public record AddressUpsertRequest(
-            @NotBlank String chain,
-            @NotBlank String address,
-            String tag,
-            Boolean enabled
-    ) {
-        public AddressUpsertRequest {
-            if (enabled == null) {
-                enabled = true;
-            }
-        }
-    }
+	public record AddressUpsertRequest(
+	@NotBlank String chain,
+	@NotBlank String address,
+	String tag,
+	Boolean enabled
+	) {
+		public AddressUpsertRequest {
+			if (enabled == null) {
+				enabled = true;
+			}
+		}
+	}
 }

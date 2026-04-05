@@ -4,20 +4,20 @@ import java.util.List;
 
 public class EventRuleCondition {
 
-    private List<EventRuleConditionItem> all;
+	private List<EventRuleConditionItem> all;
 
-    public EventRuleCondition() {
-    }
+	public EventRuleCondition() {
+	}
 
-    public EventRuleCondition(List<EventRuleConditionItem> all) {
-        this.all = all;
-    }
+	public EventRuleCondition(List<EventRuleConditionItem> all) {
+		this.all = all;
+	}
 
-    public List<EventRuleConditionItem> getAll() {
-        return all;
-    }
+	public List<EventRuleConditionItem> getAll() {
+		return all;
+	}
 
-    public void setAll(List<EventRuleConditionItem> all) {
-        this.all = all;
-    }
+	public void setAll(List<EventRuleConditionItem> all) {
+		this.all = all;
+	}
 }
