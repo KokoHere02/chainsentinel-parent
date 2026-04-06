@@ -303,4 +303,37 @@ class RuleControllerTest {
       .andExpect(status().isBadRequest())
       .andExpect(jsonPath("$.code", is("INVALID_ARGUMENT")));
   }
+
+  @Test
+  void shouldPassTemplateCreateListAndGetFlow() throws Exception {
+    AlertRuleView created = new AlertRuleView(41L, "Price Breakout", AlertRuleType.PRICE_THRESHOLD, "{}", "HIGH", true);
+    when(alertRuleService.create(any(AlertRuleCreateCommand.class))).thenReturn(created);
+    when(alertRuleService.list(any(AlertRuleQueryCommand.class))).thenReturn(List.of(created));
+    when(alertRuleService.getById(41L)).thenReturn(created);
+
+    mockMvc.perform(post("/api/rules/from-template")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "templateKey": "PRICE_BREAKOUT"
+          }
+          """))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(41)))
+      .andExpect(jsonPath("$.type", is("PRICE_THRESHOLD")));
+
+    mockMvc.perform(get("/api/rules")
+        .param("type", "PRICE_THRESHOLD")
+        .param("enabled", "true"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.length()", is(1)))
+      .andExpect(jsonPath("$[0].id", is(41)))
+      .andExpect(jsonPath("$[0].name", is("Price Breakout")));
+
+    mockMvc.perform(get("/api/rules/41"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(41)))
+      .andExpect(jsonPath("$.name", is("Price Breakout")))
+      .andExpect(jsonPath("$.enabled", is(true)));
+  }
 }
