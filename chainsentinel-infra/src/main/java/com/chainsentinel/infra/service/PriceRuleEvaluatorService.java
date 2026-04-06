@@ -29,6 +29,7 @@ private static final Logger log = LoggerFactory.getLogger(PriceRuleEvaluatorServ
 
 private static final String SEND_STATUS_PENDING = "PENDING";
 private static final String METRIC_RULE_EVAL_FAIL_TOTAL = "rule_eval_fail_total";
+private static final String METRIC_RULE_COOLDOWN_BLOCK_TOTAL = "rule_cooldown_block_total";
 
 private final AlertRuleRepository alertRuleRepository;
 private final AlertEventRepository alertEventRepository;
@@ -101,6 +102,16 @@ boolean active = Boolean.TRUE.equals(state.getActive());
 state.setLastValue(currentPrice);
 
 if (matched && !active) {
+if (isInCooldown(spec, state)) {
+ruleTriggerStateRepository.save(state);
+recordCooldownBlock(rule);
+log.info("price.rule.cooldown_skip ruleId={} targetKey={} cooldownSec={} lastTriggeredAt={}",
+rule.getId(),
+targetKey,
+spec.getCondition().getCooldownSec(),
+state.getLastTriggeredAt());
+return false;
+}
 createAlert(rule);
 state.setActive(true);
 state.setLastTriggeredAt(Instant.now());
@@ -146,6 +157,26 @@ METRIC_RULE_EVAL_FAIL_TOTAL,
 "ruleId", String.valueOf(rule.getId()),
 "type", String.valueOf(rule.getType()),
 "reason", reason
+).increment();
+}
+
+private boolean isInCooldown(PriceRuleSpec spec, RuleTriggerStateEntity state) {
+Integer cooldownSec = spec.getCondition().getCooldownSec();
+if (cooldownSec == null || cooldownSec <= 0) {
+return false;
+}
+Instant lastTriggeredAt = state.getLastTriggeredAt();
+if (lastTriggeredAt == null) {
+return false;
+}
+return lastTriggeredAt.plusSeconds(cooldownSec).isAfter(Instant.now());
+}
+
+private void recordCooldownBlock(AlertRuleEntity rule) {
+meterRegistry.counter(
+METRIC_RULE_COOLDOWN_BLOCK_TOTAL,
+"ruleId", String.valueOf(rule.getId()),
+"type", String.valueOf(rule.getType())
 ).increment();
 }
 }
