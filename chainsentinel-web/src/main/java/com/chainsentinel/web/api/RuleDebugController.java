@@ -3,6 +3,7 @@ package com.chainsentinel.web.api;
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.model.EventStatus;
 import com.chainsentinel.core.model.TokenType;
+import com.chainsentinel.core.exception.DebugEndpointDisabledException;
 import com.chainsentinel.core.rule.model.EventRuleConditionItem;
 import com.chainsentinel.core.rule.model.EventRuleField;
 import com.chainsentinel.core.rule.model.EventRuleOperator;
@@ -17,6 +18,7 @@ import com.chainsentinel.infra.rule.RuleConditionJsonParser;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Instant;
@@ -25,20 +27,22 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/rules")
 @Validated
 public class RuleDebugController {
+
+	private static final Logger log = LoggerFactory.getLogger(RuleDebugController.class);
 
 	private final AlertRuleService alertRuleService;
 	private final RuleConditionJsonParser ruleConditionJsonParser;
@@ -59,15 +63,43 @@ public class RuleDebugController {
 
 	@PostMapping("/{id}/test-match")
 	public RuleTestMatchResponse testMatch(@PathVariable Long id, @RequestBody @Valid RuleTestMatchRequest request) {
-		if (!testMatchEnabled) {
-			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Not Found");
+		log.info("rule.test_match.request ruleId={} mode=single samples=1", id);
+		AlertRuleView rule = requireEnabledAndGetRule(id);
+		return toResponse(evaluate(rule, request.sample()));
+	}
+
+	@PostMapping("/{id}/test-match/batch")
+	public List<BatchRuleTestMatchItem> testMatchBatch(
+		@PathVariable Long id,
+		@RequestBody @Valid RuleTestMatchBatchRequest request
+	) {
+		log.info("rule.test_match.request ruleId={} mode=batch samples={}", id, request.samples().size());
+		AlertRuleView rule = requireEnabledAndGetRule(id);
+		List<BatchRuleTestMatchItem> results = new ArrayList<>();
+		for (int i = 0; i < request.samples().size(); i++) {
+			JsonNode sample = request.samples().get(i);
+			MatchDetail detail = evaluate(rule, sample);
+			results.add(new BatchRuleTestMatchItem(i, toResponse(detail)));
 		}
-		AlertRuleView rule = alertRuleService.getById(id);
-		MatchDetail detail = switch (rule.type()) {
-			case PRICE_THRESHOLD -> matchPriceRule(rule, request.sample());
-			case ADDRESS, AMOUNT -> matchEventRule(rule, request.sample());
+		return results;
+	}
+
+	private AlertRuleView requireEnabledAndGetRule(Long id) {
+		if (!testMatchEnabled) {
+			throw new DebugEndpointDisabledException();
+		}
+		return alertRuleService.getById(id);
+	}
+
+	private MatchDetail evaluate(AlertRuleView rule, JsonNode sample) {
+		return switch (rule.type()) {
+			case PRICE_THRESHOLD -> matchPriceRule(rule, sample);
+			case ADDRESS, AMOUNT -> matchEventRule(rule, sample);
 			default -> throw new IllegalArgumentException("Unsupported rule type: " + rule.type());
 		};
+	}
+
+	private RuleTestMatchResponse toResponse(MatchDetail detail) {
 		return new RuleTestMatchResponse(
 			detail.matched(),
 			detail.matched() ? "matched" : "not_matched",
@@ -266,6 +298,11 @@ public class RuleDebugController {
 	public record RuleTestMatchRequest(@NotNull JsonNode sample) {
 	}
 
+	public record RuleTestMatchBatchRequest(
+		@NotNull @Size(min = 1, max = 100) List<@NotNull JsonNode> samples
+	) {
+	}
+
 	public record RuleTestMatchResponse(
 		boolean matched,
 		String reason,
@@ -281,6 +318,12 @@ public class RuleDebugController {
 		String expected,
 		String actual,
 		boolean matched
+	) {
+	}
+
+	public record BatchRuleTestMatchItem(
+		int index,
+		RuleTestMatchResponse result
 	) {
 	}
 

@@ -183,8 +183,73 @@ class RuleDebugControllerTest {
 					  }
 					}
 					"""))
-			.andExpect(status().isNotFound());
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code", is("DEBUG_ENDPOINT_DISABLED")));
 
 		verifyNoInteractions(alertRuleService);
+	}
+
+	@Test
+	void shouldBatchTestMatchWithMixedResults() throws Exception {
+		when(alertRuleService.getById(103L))
+			.thenReturn(new AlertRuleView(
+				103L,
+				"price-rule-batch",
+				AlertRuleType.PRICE_THRESHOLD,
+				"""
+				{"version":1,"type":"PRICE","condition":{"symbol":"BTC-USDT","op":"gte","threshold":"100000","cooldownSec":0}}
+				""",
+				"HIGH",
+				true
+			));
+
+		mockMvc.perform(post("/api/rules/103/test-match/batch")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "samples": [
+					    {"currentPrice": "120000"},
+					    {"currentPrice": "80000"}
+					  ]
+					}
+					"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$[0].index", is(0)))
+			.andExpect(jsonPath("$[0].result.matched", is(true)))
+			.andExpect(jsonPath("$[1].index", is(1)))
+			.andExpect(jsonPath("$[1].result.matched", is(false)))
+			.andExpect(jsonPath("$[1].result.failedCondition.field", is("price")));
+	}
+
+	@Test
+	void shouldReturn400WhenBatchSamplesEmpty() throws Exception {
+		mockMvc.perform(post("/api/rules/103/test-match/batch")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "samples": []
+					}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code", is("VALIDATION_ERROR")));
+	}
+
+	@Test
+	void shouldReturn400WhenBatchSamplesExceedMax() throws Exception {
+		StringBuilder samples = new StringBuilder();
+		samples.append("[");
+		for (int i = 0; i < 101; i++) {
+			if (i > 0) {
+				samples.append(",");
+			}
+			samples.append("{\"currentPrice\":\"100000\"}");
+		}
+		samples.append("]");
+
+		mockMvc.perform(post("/api/rules/103/test-match/batch")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("{\"samples\":" + samples + "}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code", is("VALIDATION_ERROR")));
 	}
 }
