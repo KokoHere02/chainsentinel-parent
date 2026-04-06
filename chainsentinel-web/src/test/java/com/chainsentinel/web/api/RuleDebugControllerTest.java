@@ -1,6 +1,7 @@
 package com.chainsentinel.web.api;
 
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -77,7 +78,37 @@ class RuleDebugControllerTest {
 					"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.matched", is(true)))
-			.andExpect(jsonPath("$.reason", is("matched")));
+			.andExpect(jsonPath("$.reason", is("matched")))
+			.andExpect(jsonPath("$.reasonDetail", containsString("price condition matched")));
+	}
+
+	@Test
+	void shouldReturnPriceMismatchReasonDetail() throws Exception {
+		when(alertRuleService.getById(102L))
+			.thenReturn(new AlertRuleView(
+				102L,
+				"price-rule-mismatch",
+				AlertRuleType.PRICE_THRESHOLD,
+				"""
+				{"version":1,"type":"PRICE","condition":{"symbol":"BTC-USDT","op":"gte","threshold":"100000","cooldownSec":0}}
+				""",
+				"HIGH",
+				true
+			));
+
+		mockMvc.perform(post("/api/rules/102/test-match")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "sample": {
+					    "currentPrice": "99999"
+					  }
+					}
+					"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.matched", is(false)))
+			.andExpect(jsonPath("$.reason", is("not_matched")))
+			.andExpect(jsonPath("$.reasonDetail", containsString("price condition not matched")));
 	}
 
 	@Test
@@ -106,6 +137,7 @@ class RuleDebugControllerTest {
 					"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.matched", is(false)))
-			.andExpect(jsonPath("$.reason", is("not_matched")));
+			.andExpect(jsonPath("$.reason", is("not_matched")))
+			.andExpect(jsonPath("$.reasonDetail", containsString("field=to_address")));
 	}
 }
