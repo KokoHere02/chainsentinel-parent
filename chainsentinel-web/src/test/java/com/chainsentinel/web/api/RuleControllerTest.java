@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -226,5 +227,31 @@ class RuleControllerTest {
 
     mockMvc.perform(get("/api/rules/404"))
       .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void shouldEnableRule() throws Exception {
+    when(alertRuleService.setEnabled(21L, true))
+      .thenReturn(new AlertRuleView(21L, "r-enable", AlertRuleType.ADDRESS, "{}", "HIGH", true));
+
+    mockMvc.perform(patch("/api/rules/21/enable"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(21)))
+      .andExpect(jsonPath("$.enabled", is(true)));
+
+    verify(alertRuleService).setEnabled(21L, true);
+  }
+
+  @Test
+  void shouldDisableRule() throws Exception {
+    when(alertRuleService.setEnabled(22L, false))
+      .thenReturn(new AlertRuleView(22L, "r-disable", AlertRuleType.ADDRESS, "{}", "HIGH", false));
+
+    mockMvc.perform(patch("/api/rules/22/disable"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(22)))
+      .andExpect(jsonPath("$.enabled", is(false)));
+
+    verify(alertRuleService).setEnabled(22L, false);
   }
 }

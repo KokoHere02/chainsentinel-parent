@@ -17,4 +17,6 @@ public interface AlertRuleService {
 	AlertRuleView delete(Long id);
 
 	AlertRuleView getById(Long id);
+
+	AlertRuleView setEnabled(Long id, boolean enabled);
 }

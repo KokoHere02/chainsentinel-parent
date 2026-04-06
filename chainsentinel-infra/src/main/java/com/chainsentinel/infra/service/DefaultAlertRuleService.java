@@ -160,6 +160,29 @@ public AlertRuleView getById(Long id) {
 	);
 }
 
+@Override
+@Transactional
+public AlertRuleView setEnabled(Long id, boolean enabled) {
+	Long ruleId = Objects.requireNonNull(id, "id is required");
+	AlertRuleEntity entity = alertRuleRepository.findById(ruleId)
+		.orElseThrow(() -> new NotFoundException("Rule not found: " + ruleId));
+
+	Boolean target = enabled;
+	if (!target.equals(entity.getEnabled())) {
+		entity.setEnabled(target);
+		entity = alertRuleRepository.save(entity);
+	}
+
+	return new AlertRuleView(
+		entity.getId(),
+		entity.getName(),
+		entity.getType(),
+		entity.getConditionJson(),
+		entity.getSeverity(),
+		entity.getEnabled()
+	);
+}
+
 private void validateRuleType(AlertRuleType type) {
 if (type != null && ENABLED_RULE_TYPES.contains(type)) {
 return;

@@ -15,6 +15,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -72,6 +73,16 @@ public class RuleController {
 	@DeleteMapping("/{id}")
 	public AlertRuleView delete(@PathVariable Long id) {
 		return alertRuleService.delete(id);
+	}
+
+	@PatchMapping("/{id}/enable")
+	public AlertRuleView enable(@PathVariable Long id) {
+		return alertRuleService.setEnabled(id, true);
+	}
+
+	@PatchMapping("/{id}/disable")
+	public AlertRuleView disable(@PathVariable Long id) {
+		return alertRuleService.setEnabled(id, false);
 	}
 
 	public record RuleCreateRequest(

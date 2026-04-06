@@ -378,4 +378,47 @@ class DefaultAlertRuleServiceTest {
     NotFoundException ex = assertThrows(NotFoundException.class, () -> service.getById(999L));
     assertEquals("Rule not found: 999", ex.getMessage());
   }
+
+  @Test
+  void shouldSetEnabledAndPersistWhenStatusChanges() {
+    DefaultAlertRuleService service = buildService();
+
+    AlertRuleEntity existing = new AlertRuleEntity();
+    ReflectionTestUtils.setField(existing, "id", 61L);
+    existing.setName("toggle-rule");
+    existing.setType(AlertRuleType.ADDRESS);
+    existing.setConditionJson("{}");
+    existing.setSeverity("HIGH");
+    existing.setEnabled(false);
+
+    when(alertRuleRepository.findById(61L)).thenReturn(Optional.of(existing));
+    when(alertRuleRepository.save(any(AlertRuleEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+    AlertRuleView view = service.setEnabled(61L, true);
+
+    assertEquals(61L, view.id());
+    assertEquals(true, view.enabled());
+    verify(alertRuleRepository).save(any(AlertRuleEntity.class));
+  }
+
+  @Test
+  void shouldSetEnabledIdempotentlyWithoutPersistWhenStatusUnchanged() {
+    DefaultAlertRuleService service = buildService();
+
+    AlertRuleEntity existing = new AlertRuleEntity();
+    ReflectionTestUtils.setField(existing, "id", 62L);
+    existing.setName("toggle-rule-idempotent");
+    existing.setType(AlertRuleType.ADDRESS);
+    existing.setConditionJson("{}");
+    existing.setSeverity("HIGH");
+    existing.setEnabled(true);
+
+    when(alertRuleRepository.findById(62L)).thenReturn(Optional.of(existing));
+
+    AlertRuleView view = service.setEnabled(62L, true);
+
+    assertEquals(62L, view.id());
+    assertEquals(true, view.enabled());
+    verify(alertRuleRepository, never()).save(any(AlertRuleEntity.class));
+  }
 }
