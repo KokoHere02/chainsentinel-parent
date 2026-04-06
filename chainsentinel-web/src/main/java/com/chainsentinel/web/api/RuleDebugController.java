@@ -21,15 +21,19 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/rules")
@@ -39,19 +43,25 @@ public class RuleDebugController {
 	private final AlertRuleService alertRuleService;
 	private final RuleConditionJsonParser ruleConditionJsonParser;
 	private final EventRuleConditionParser eventRuleConditionParser;
+	private final boolean testMatchEnabled;
 
 	public RuleDebugController(
 		AlertRuleService alertRuleService,
 		RuleConditionJsonParser ruleConditionJsonParser,
-		EventRuleConditionParser eventRuleConditionParser
+		EventRuleConditionParser eventRuleConditionParser,
+		@Value("${chainsentinel.debug.rule-test-match-enabled:false}") boolean testMatchEnabled
 	) {
 		this.alertRuleService = alertRuleService;
 		this.ruleConditionJsonParser = ruleConditionJsonParser;
 		this.eventRuleConditionParser = eventRuleConditionParser;
+		this.testMatchEnabled = testMatchEnabled;
 	}
 
 	@PostMapping("/{id}/test-match")
 	public RuleTestMatchResponse testMatch(@PathVariable Long id, @RequestBody @Valid RuleTestMatchRequest request) {
+		if (!testMatchEnabled) {
+			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Not Found");
+		}
 		AlertRuleView rule = alertRuleService.getById(id);
 		MatchDetail detail = switch (rule.type()) {
 			case PRICE_THRESHOLD -> matchPriceRule(rule, request.sample());
@@ -61,7 +71,9 @@ public class RuleDebugController {
 		return new RuleTestMatchResponse(
 			detail.matched(),
 			detail.matched() ? "matched" : "not_matched",
-			detail.reasonDetail()
+			detail.reasonDetail(),
+			detail.passedConditions(),
+			detail.failedCondition()
 		);
 	}
 
@@ -78,22 +90,33 @@ public class RuleDebugController {
 		String reasonDetail = matched
 			? "price condition matched: currentPrice=%s op=%s threshold=%s".formatted(currentPrice, op, threshold)
 			: "price condition not matched: currentPrice=%s op=%s threshold=%s".formatted(currentPrice, op, threshold);
-		return new MatchDetail(matched, reasonDetail);
+		ConditionResult result = new ConditionResult("price", op, threshold.toPlainString(), currentPrice.toPlainString(), matched);
+		return matched
+			? new MatchDetail(true, reasonDetail, List.of(result), null)
+			: new MatchDetail(false, reasonDetail, List.of(), result);
 	}
 
 	private MatchDetail matchEventRule(AlertRuleView rule, JsonNode sample) {
 		AssetEventEntity event = toSampleEvent(sample);
 		EventRuleSpec spec = ruleConditionJsonParser.parseEvent(rule.conditionJson());
+		List<ConditionResult> passed = new ArrayList<>();
 		for (EventRuleConditionItem item : spec.getCondition().getAll()) {
-			MatchDetail detail = evalEventCondition(item, event);
+			ConditionResult detail = evalEventCondition(item, event);
 			if (!detail.matched()) {
-				return detail;
+				return new MatchDetail(
+					false,
+					"condition failed: field=%s op=%s expected=%s actual=%s"
+						.formatted(detail.field(), detail.op(), detail.expected(), detail.actual()),
+					passed,
+					detail
+				);
 			}
+			passed.add(detail);
 		}
-		return new MatchDetail(true, "all event conditions matched");
+		return new MatchDetail(true, "all event conditions matched", passed, null);
 	}
 
-	private MatchDetail evalEventCondition(EventRuleConditionItem item, AssetEventEntity event) {
+	private ConditionResult evalEventCondition(EventRuleConditionItem item, AssetEventEntity event) {
 		Object actual = fieldValue(item.getField(), event);
 		EventRuleOperator op = item.getOp();
 		Object expected = item.getValue();
@@ -117,13 +140,12 @@ public class RuleDebugController {
 			};
 		}
 
-		if (matched) {
-			return new MatchDetail(true, "condition matched: field=%s op=%s".formatted(item.getField().wireValue(), op.wireValue()));
-		}
-		return new MatchDetail(
-			false,
-			"condition failed: field=%s op=%s expected=%s actual=%s"
-				.formatted(item.getField().wireValue(), op.wireValue(), expected, actual)
+		return new ConditionResult(
+			item.getField().wireValue(),
+			op.wireValue(),
+			String.valueOf(expected),
+			String.valueOf(actual),
+			matched
 		);
 	}
 
@@ -244,9 +266,29 @@ public class RuleDebugController {
 	public record RuleTestMatchRequest(@NotNull JsonNode sample) {
 	}
 
-	public record RuleTestMatchResponse(boolean matched, String reason, String reasonDetail) {
+	public record RuleTestMatchResponse(
+		boolean matched,
+		String reason,
+		String reasonDetail,
+		List<ConditionResult> passedConditions,
+		ConditionResult failedCondition
+	) {
 	}
 
-	private record MatchDetail(boolean matched, String reasonDetail) {
+	public record ConditionResult(
+		String field,
+		String op,
+		String expected,
+		String actual,
+		boolean matched
+	) {
+	}
+
+	private record MatchDetail(
+		boolean matched,
+		String reasonDetail,
+		List<ConditionResult> passedConditions,
+		ConditionResult failedCondition
+	) {
 	}
 }

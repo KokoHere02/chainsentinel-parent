@@ -2,6 +2,8 @@ package com.chainsentinel.web.api;
 
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -45,7 +47,8 @@ class RuleDebugControllerTest {
 		RuleDebugController controller = new RuleDebugController(
 			alertRuleService,
 			ruleConditionJsonParser,
-			eventRuleConditionParser
+			eventRuleConditionParser,
+			true
 		);
 		mockMvc = MockMvcBuilders
 			.standaloneSetup(controller)
@@ -79,7 +82,10 @@ class RuleDebugControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.matched", is(true)))
 			.andExpect(jsonPath("$.reason", is("matched")))
-			.andExpect(jsonPath("$.reasonDetail", containsString("price condition matched")));
+			.andExpect(jsonPath("$.reasonDetail", containsString("price condition matched")))
+			.andExpect(jsonPath("$.passedConditions.length()", is(1)))
+			.andExpect(jsonPath("$.passedConditions[0].field", is("price")))
+			.andExpect(jsonPath("$.failedCondition", nullValue()));
 	}
 
 	@Test
@@ -108,7 +114,10 @@ class RuleDebugControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.matched", is(false)))
 			.andExpect(jsonPath("$.reason", is("not_matched")))
-			.andExpect(jsonPath("$.reasonDetail", containsString("price condition not matched")));
+			.andExpect(jsonPath("$.reasonDetail", containsString("price condition not matched")))
+			.andExpect(jsonPath("$.passedConditions.length()", is(0)))
+			.andExpect(jsonPath("$.failedCondition.field", is("price")))
+			.andExpect(jsonPath("$.failedCondition.op", is("gte")));
 	}
 
 	@Test
@@ -138,6 +147,44 @@ class RuleDebugControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.matched", is(false)))
 			.andExpect(jsonPath("$.reason", is("not_matched")))
-			.andExpect(jsonPath("$.reasonDetail", containsString("field=to_address")));
+			.andExpect(jsonPath("$.reasonDetail", containsString("field=to_address")))
+			.andExpect(jsonPath("$.passedConditions.length()", is(1)))
+			.andExpect(jsonPath("$.passedConditions[0].field", is("chain")))
+			.andExpect(jsonPath("$.failedCondition.field", is("to_address")));
+	}
+
+	@Test
+	void shouldReturn404WhenTestMatchDisabled() throws Exception {
+		ObjectMapper objectMapper = new ObjectMapper();
+		EventRuleConditionParser eventRuleConditionParser = new EventRuleConditionParser(objectMapper);
+		PriceRuleConditionParser priceRuleConditionParser = new PriceRuleConditionParser(objectMapper);
+		RuleConditionJsonParser ruleConditionJsonParser = new RuleConditionJsonParser(
+			objectMapper,
+			eventRuleConditionParser,
+			priceRuleConditionParser
+		);
+		RuleDebugController disabledController = new RuleDebugController(
+			alertRuleService,
+			ruleConditionJsonParser,
+			eventRuleConditionParser,
+			false
+		);
+		MockMvc disabledMvc = MockMvcBuilders
+			.standaloneSetup(disabledController)
+			.setControllerAdvice(new GlobalExceptionHandler())
+			.build();
+
+		disabledMvc.perform(post("/api/rules/100/test-match")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "sample": {
+					    "currentPrice": "120000"
+					  }
+					}
+					"""))
+			.andExpect(status().isNotFound());
+
+		verifyNoInteractions(alertRuleService);
 	}
 }

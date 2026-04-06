@@ -17,3 +17,7 @@ management:
       probes:
         enabled: true
 
+chainsentinel:
+  debug:
+    rule-test-match-enabled: false
+
