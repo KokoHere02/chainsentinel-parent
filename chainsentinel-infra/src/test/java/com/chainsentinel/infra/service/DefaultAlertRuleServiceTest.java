@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.chainsentinel.core.exception.RuleGovernanceException;
+import com.chainsentinel.core.exception.NotFoundException;
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.rule.model.EventRuleCondition;
 import com.chainsentinel.core.rule.model.EventRuleConditionItem;
@@ -367,5 +368,14 @@ class DefaultAlertRuleServiceTest {
     assertEquals(52L, view.id());
     assertEquals(false, view.enabled());
     verify(alertRuleRepository, never()).save(any(AlertRuleEntity.class));
+  }
+
+  @Test
+  void shouldThrowNotFoundWhenGetByIdMissing() {
+    DefaultAlertRuleService service = buildService();
+    when(alertRuleRepository.findById(999L)).thenReturn(Optional.empty());
+
+    NotFoundException ex = assertThrows(NotFoundException.class, () -> service.getById(999L));
+    assertEquals("Rule not found: 999", ex.getMessage());
   }
 }

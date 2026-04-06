@@ -15,4 +15,6 @@ public interface AlertRuleService {
 	List<AlertRuleView> list(AlertRuleQueryCommand command);
 
 	AlertRuleView delete(Long id);
+
+	AlertRuleView getById(Long id);
 }

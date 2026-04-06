@@ -17,6 +17,8 @@ import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleQueryCommand;
 import com.chainsentinel.core.service.dto.AlertRuleUpdateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
+import com.chainsentinel.core.exception.NotFoundException;
+import com.chainsentinel.web.api.support.GlobalExceptionHandler;
 import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +42,10 @@ class RuleControllerTest {
   @BeforeEach
   void setUp() {
     RuleController controller = new RuleController(alertRuleService);
-    mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    mockMvc = MockMvcBuilders
+      .standaloneSetup(controller)
+      .setControllerAdvice(new GlobalExceptionHandler())
+      .build();
   }
 
   @Test
@@ -199,5 +204,27 @@ class RuleControllerTest {
       .andExpect(jsonPath("$.enabled", is(false)));
 
     verify(alertRuleService).delete(12L);
+  }
+
+  @Test
+  void shouldGetRuleById() throws Exception {
+    when(alertRuleService.getById(15L))
+      .thenReturn(new AlertRuleView(15L, "r-detail", AlertRuleType.AMOUNT, "{}", "HIGH", true));
+
+    mockMvc.perform(get("/api/rules/15"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(15)))
+      .andExpect(jsonPath("$.name", is("r-detail")))
+      .andExpect(jsonPath("$.type", is("AMOUNT")));
+
+    verify(alertRuleService).getById(15L);
+  }
+
+  @Test
+  void shouldReturn404WhenGetRuleByIdNotFound() throws Exception {
+    when(alertRuleService.getById(404L)).thenThrow(new NotFoundException("Rule not found: 404"));
+
+    mockMvc.perform(get("/api/rules/404"))
+      .andExpect(status().isNotFound());
   }
 }

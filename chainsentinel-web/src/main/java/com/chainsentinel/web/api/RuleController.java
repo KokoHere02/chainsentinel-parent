@@ -53,6 +53,11 @@ public class RuleController {
 		return alertRuleService.list(new AlertRuleQueryCommand(type, enabled, keyword));
 	}
 
+	@GetMapping("/{id}")
+	public AlertRuleView getById(@PathVariable Long id) {
+		return alertRuleService.getById(id);
+	}
+
 	@PutMapping("/{id}")
 	public AlertRuleView update(@PathVariable Long id, @RequestBody @Valid RuleUpdateRequest request) {
 		return alertRuleService.update(new AlertRuleUpdateCommand(

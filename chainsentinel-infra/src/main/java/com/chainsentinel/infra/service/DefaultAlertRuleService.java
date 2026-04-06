@@ -143,6 +143,23 @@ public AlertRuleView delete(Long id) {
 	);
 }
 
+@Override
+@Transactional(readOnly = true)
+public AlertRuleView getById(Long id) {
+	Long ruleId = Objects.requireNonNull(id, "id is required");
+	AlertRuleEntity entity = alertRuleRepository.findById(ruleId)
+		.orElseThrow(() -> new NotFoundException("Rule not found: " + ruleId));
+
+	return new AlertRuleView(
+		entity.getId(),
+		entity.getName(),
+		entity.getType(),
+		entity.getConditionJson(),
+		entity.getSeverity(),
+		entity.getEnabled()
+	);
+}
+
 private void validateRuleType(AlertRuleType type) {
 if (type != null && ENABLED_RULE_TYPES.contains(type)) {
 return;
