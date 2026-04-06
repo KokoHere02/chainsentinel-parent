@@ -1,6 +1,7 @@
 package com.chainsentinel.core.service;
 
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
+import com.chainsentinel.core.service.dto.AlertRulePatchConditionCommand;
 import com.chainsentinel.core.service.dto.AlertRuleQueryCommand;
 import com.chainsentinel.core.service.dto.AlertRuleUpdateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
@@ -11,6 +12,8 @@ public interface AlertRuleService {
 	AlertRuleView create(AlertRuleCreateCommand command);
 
 	AlertRuleView update(AlertRuleUpdateCommand command);
+
+	AlertRuleView patchCondition(AlertRulePatchConditionCommand command);
 
 	List<AlertRuleView> list(AlertRuleQueryCommand command);
 

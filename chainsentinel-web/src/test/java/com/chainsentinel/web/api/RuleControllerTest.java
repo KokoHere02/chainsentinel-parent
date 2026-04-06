@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.service.AlertRuleService;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
+import com.chainsentinel.core.service.dto.AlertRulePatchConditionCommand;
 import com.chainsentinel.core.service.dto.AlertRuleQueryCommand;
 import com.chainsentinel.core.service.dto.AlertRuleUpdateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
@@ -335,5 +336,60 @@ class RuleControllerTest {
       .andExpect(jsonPath("$.id", is(41)))
       .andExpect(jsonPath("$.name", is("Price Breakout")))
       .andExpect(jsonPath("$.enabled", is(true)));
+  }
+
+  @Test
+  void shouldPatchCondition() throws Exception {
+    when(alertRuleService.patchCondition(any(AlertRulePatchConditionCommand.class)))
+      .thenReturn(new AlertRuleView(51L, "price-1", AlertRuleType.PRICE_THRESHOLD, "{}", "HIGH", true));
+
+    mockMvc.perform(patch("/api/rules/51/condition")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "condition": {
+              "version": 1,
+              "type": "PRICE",
+              "condition": {
+                "symbol": "BTC-USDT",
+                "op": "gte",
+                "threshold": "110000",
+                "cooldownSec": 60
+              }
+            }
+          }
+          """))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(51)))
+      .andExpect(jsonPath("$.type", is("PRICE_THRESHOLD")));
+
+    ArgumentCaptor<AlertRulePatchConditionCommand> captor = ArgumentCaptor.forClass(AlertRulePatchConditionCommand.class);
+    verify(alertRuleService).patchCondition(captor.capture());
+    AlertRulePatchConditionCommand cmd = captor.getValue();
+    Assertions.assertEquals(51L, cmd.id());
+    Assertions.assertEquals("BTC-USDT", cmd.condition().get("condition").get("symbol").asText());
+  }
+
+  @Test
+  void shouldReturn400WhenPatchConditionInvalid() throws Exception {
+    when(alertRuleService.patchCondition(any(AlertRulePatchConditionCommand.class)))
+      .thenThrow(new IllegalArgumentException("condition.threshold is required"));
+
+    mockMvc.perform(patch("/api/rules/51/condition")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "condition": {
+              "version": 1,
+              "type": "PRICE",
+              "condition": {
+                "symbol": "BTC-USDT",
+                "op": "gte"
+              }
+            }
+          }
+          """))
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.code", is("INVALID_ARGUMENT")));
   }
 }

@@ -3,6 +3,7 @@ package com.chainsentinel.web.api;
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.service.AlertRuleService;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
+import com.chainsentinel.core.service.dto.AlertRulePatchConditionCommand;
 import com.chainsentinel.core.service.dto.AlertRuleQueryCommand;
 import com.chainsentinel.core.service.dto.AlertRuleUpdateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
@@ -102,6 +103,11 @@ public class RuleController {
 		return alertRuleService.setEnabled(id, false);
 	}
 
+	@PatchMapping("/{id}/condition")
+	public AlertRuleView patchCondition(@PathVariable Long id, @RequestBody @Valid RulePatchConditionRequest request) {
+		return alertRuleService.patchCondition(new AlertRulePatchConditionCommand(id, request.condition()));
+	}
+
 	public record RuleCreateRequest(
 		@NotBlank String name,
 		@NotNull AlertRuleType type,
@@ -135,6 +141,11 @@ public class RuleController {
 		String severity,
 		Boolean enabled,
 		JsonNode conditionOverrides
+	) {
+	}
+
+	public record RulePatchConditionRequest(
+		@NotNull JsonNode condition
 	) {
 	}
 

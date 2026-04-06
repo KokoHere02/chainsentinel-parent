@@ -5,6 +5,7 @@ import com.chainsentinel.core.exception.RuleGovernanceException;
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.service.AlertRuleService;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
+import com.chainsentinel.core.service.dto.AlertRulePatchConditionCommand;
 import com.chainsentinel.core.service.dto.AlertRuleQueryCommand;
 import com.chainsentinel.core.service.dto.AlertRuleUpdateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
@@ -75,6 +76,26 @@ AlertRuleEntity entity = alertRuleRepository.findById(id)
 	entity.setName(command.name());
 	entity.setSeverity(command.severity());
 	entity.setEnabled(Boolean.TRUE.equals(command.enabled()));
+	entity.setConditionJson(ruleConditionJsonParser.serialize(entity.getType(), command.condition()));
+
+	AlertRuleEntity saved = alertRuleRepository.save(entity);
+	return new AlertRuleView(
+		saved.getId(),
+		saved.getName(),
+		saved.getType(),
+		saved.getConditionJson(),
+		saved.getSeverity(),
+		saved.getEnabled()
+	);
+}
+
+@Override
+@Transactional
+public AlertRuleView patchCondition(AlertRulePatchConditionCommand command) {
+Long id = Objects.requireNonNull(command.id(), "id is required");
+AlertRuleEntity entity = alertRuleRepository.findById(id)
+	.orElseThrow(() -> new NotFoundException("Rule not found: " + id));
+
 	entity.setConditionJson(ruleConditionJsonParser.serialize(entity.getType(), command.condition()));
 
 	AlertRuleEntity saved = alertRuleRepository.save(entity);
