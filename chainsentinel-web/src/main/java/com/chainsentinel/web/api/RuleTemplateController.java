@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -76,6 +77,12 @@ public class RuleTemplateController {
 	@GetMapping
 	public List<RuleTemplateView> list() {
 		return TEMPLATES;
+	}
+
+	public static Optional<RuleTemplateView> findByKey(String key) {
+		return TEMPLATES.stream()
+			.filter(template -> template.key().equalsIgnoreCase(key))
+			.findFirst();
 	}
 
 	private static JsonNode toJsonNode(Map<String, Object> map) {

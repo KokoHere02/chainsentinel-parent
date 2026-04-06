@@ -254,4 +254,53 @@ class RuleControllerTest {
 
     verify(alertRuleService).setEnabled(22L, false);
   }
+
+  @Test
+  void shouldCreateRuleFromTemplateWithOverrides() throws Exception {
+    when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
+      .thenReturn(new AlertRuleView(31L, "BTC breakout custom", AlertRuleType.PRICE_THRESHOLD, "{}", "CRITICAL", true));
+
+    mockMvc.perform(post("/api/rules/from-template")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "templateKey": "PRICE_BREAKOUT",
+            "name": "BTC breakout custom",
+            "severity": "CRITICAL",
+            "conditionOverrides": {
+              "condition": {
+                "symbol": "ETH-USDT",
+                "threshold": "5000",
+                "cooldownSec": 120
+              }
+            }
+          }
+          """))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(31)))
+      .andExpect(jsonPath("$.type", is("PRICE_THRESHOLD")));
+
+    ArgumentCaptor<AlertRuleCreateCommand> captor = ArgumentCaptor.forClass(AlertRuleCreateCommand.class);
+    verify(alertRuleService).create(captor.capture());
+    AlertRuleCreateCommand cmd = captor.getValue();
+    Assertions.assertEquals("BTC breakout custom", cmd.name());
+    Assertions.assertEquals(AlertRuleType.PRICE_THRESHOLD, cmd.type());
+    Assertions.assertEquals("CRITICAL", cmd.severity());
+    Assertions.assertEquals("ETH-USDT", cmd.condition().get("condition").get("symbol").asText());
+    Assertions.assertEquals("5000", cmd.condition().get("condition").get("threshold").asText());
+    Assertions.assertEquals(120, cmd.condition().get("condition").get("cooldownSec").asInt());
+  }
+
+  @Test
+  void shouldReturn400WhenTemplateKeyInvalid() throws Exception {
+    mockMvc.perform(post("/api/rules/from-template")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "templateKey": "NOT_EXISTS"
+          }
+          """))
+      .andExpect(status().isBadRequest())
+      .andExpect(jsonPath("$.code", is("INVALID_ARGUMENT")));
+  }
 }
