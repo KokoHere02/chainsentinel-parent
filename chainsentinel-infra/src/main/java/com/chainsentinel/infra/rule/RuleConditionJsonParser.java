@@ -10,6 +10,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class RuleConditionJsonParser {
 
+private static final int MAX_COOLDOWN_SEC = 86400;
+
 private final ObjectMapper objectMapper;
 private final EventRuleConditionParser eventRuleConditionParser;
 private final PriceRuleConditionParser priceRuleConditionParser;
@@ -33,7 +35,7 @@ throw new IllegalArgumentException("condition is required");
 }
 return switch (type) {
 case ADDRESS, AMOUNT -> eventRuleConditionParser.serialize(toEventRuleSpec(condition));
-case PRICE_THRESHOLD -> priceRuleConditionParser.serialize(toPriceRuleSpec(condition));
+case PRICE_THRESHOLD -> priceRuleConditionParser.serialize(toNormalizedPriceRuleSpec(condition));
 default -> throw new IllegalArgumentException("Unsupported rule type for parser: " + type);
 };
 }
@@ -56,5 +58,21 @@ return objectMapper.convertValue(node, EventRuleSpec.class);
 
 private PriceRuleSpec toPriceRuleSpec(JsonNode node) {
 return objectMapper.convertValue(node, PriceRuleSpec.class);
+}
+
+private PriceRuleSpec toNormalizedPriceRuleSpec(JsonNode node) {
+PriceRuleSpec spec = toPriceRuleSpec(node);
+if (spec == null || spec.getCondition() == null) {
+return spec;
+}
+Integer cooldownSec = spec.getCondition().getCooldownSec();
+if (cooldownSec == null) {
+spec.getCondition().setCooldownSec(0);
+return spec;
+}
+if (cooldownSec > MAX_COOLDOWN_SEC) {
+throw new IllegalArgumentException("condition.cooldownSec must be <= " + MAX_COOLDOWN_SEC);
+}
+return spec;
 }
 }

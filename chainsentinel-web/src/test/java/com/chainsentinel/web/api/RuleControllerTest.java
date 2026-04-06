@@ -4,14 +4,20 @@ import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.service.AlertRuleService;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
+import com.chainsentinel.core.service.dto.AlertRuleQueryCommand;
+import com.chainsentinel.core.service.dto.AlertRuleUpdateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
+import java.util.List;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -121,5 +127,77 @@ class RuleControllerTest {
           }
           """))
       .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void shouldUpdatePriceRule() throws Exception {
+    when(alertRuleService.update(any(AlertRuleUpdateCommand.class)))
+      .thenReturn(new AlertRuleView(9L, "btc-update", AlertRuleType.PRICE_THRESHOLD, "{}", "HIGH", false));
+
+    mockMvc.perform(put("/api/rules/9")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "name": "btc-update",
+            "condition": {
+              "version": 1,
+              "type": "PRICE",
+              "condition": {
+                "symbol": "BTC-USDT",
+                "op": "gte",
+                "threshold": "100000",
+                "cooldownSec": 60
+              }
+            },
+            "severity": "HIGH",
+            "enabled": false
+          }
+          """))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(9)))
+      .andExpect(jsonPath("$.type", is("PRICE_THRESHOLD")))
+      .andExpect(jsonPath("$.enabled", is(false)));
+
+    ArgumentCaptor<AlertRuleUpdateCommand> captor = ArgumentCaptor.forClass(AlertRuleUpdateCommand.class);
+    verify(alertRuleService).update(captor.capture());
+    AlertRuleUpdateCommand cmd = captor.getValue();
+    Assertions.assertEquals(9L, cmd.id());
+    Assertions.assertEquals("btc-update", cmd.name());
+    Assertions.assertEquals("HIGH", cmd.severity());
+    Assertions.assertEquals(false, cmd.enabled());
+    Assertions.assertEquals(1, cmd.condition().get("version").asInt());
+  }
+
+  @Test
+  void shouldListRulesWithTypeAndEnabledFilters() throws Exception {
+    when(alertRuleService.list(any(AlertRuleQueryCommand.class)))
+      .thenReturn(List.of(new AlertRuleView(5L, "price-1", AlertRuleType.PRICE_THRESHOLD, "{}", "HIGH", true)));
+
+    mockMvc.perform(get("/api/rules")
+        .param("type", "PRICE_THRESHOLD")
+        .param("enabled", "true"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$[0].id", is(5)))
+      .andExpect(jsonPath("$[0].type", is("PRICE_THRESHOLD")))
+      .andExpect(jsonPath("$[0].enabled", is(true)));
+
+    ArgumentCaptor<AlertRuleQueryCommand> captor = ArgumentCaptor.forClass(AlertRuleQueryCommand.class);
+    verify(alertRuleService).list(captor.capture());
+    AlertRuleQueryCommand cmd = captor.getValue();
+    Assertions.assertEquals(AlertRuleType.PRICE_THRESHOLD, cmd.type());
+    Assertions.assertEquals(true, cmd.enabled());
+  }
+
+  @Test
+  void shouldDeleteRule() throws Exception {
+    when(alertRuleService.delete(12L))
+      .thenReturn(new AlertRuleView(12L, "r-del", AlertRuleType.ADDRESS, "{}", "HIGH", false));
+
+    mockMvc.perform(delete("/api/rules/12"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.id", is(12)))
+      .andExpect(jsonPath("$.enabled", is(false)));
+
+    verify(alertRuleService).delete(12L);
   }
 }

@@ -203,6 +203,61 @@ class PriceRuleEvaluatorServiceTest {
     verify(alertEventRepository, times(1)).save(any(AlertEventEntity.class));
   }
 
+  @Test
+  void shouldRunFullFlowCreateRuleTriggerCooldownBlockAndRetriggerAfterWindow() throws Exception {
+    AlertRuleEntity rule = new AlertRuleEntity();
+    ReflectionTestUtils.setField(rule, "id", 11L);
+    rule.setType(AlertRuleType.PRICE_THRESHOLD);
+    rule.setSeverity("HIGH");
+    rule.setConditionJson(buildPriceRuleJson("BTC-USDT", "100", 60));
+
+    when(alertRuleRepository.findByTypeAndEnabledTrue(AlertRuleType.PRICE_THRESHOLD)).thenReturn(List.of(rule));
+
+    AssetPriceSnapshotEntity snapshot = new AssetPriceSnapshotEntity();
+    snapshot.setInstId("BTC-USDT");
+    snapshot.setPrice(new BigDecimal("120"));
+    when(assetPriceSnapshotRepository.findTopByInstIdOrderByBucketTsDesc("BTC-USDT"))
+      .thenReturn(Optional.of(snapshot));
+
+    AtomicReference<RuleTriggerStateEntity> stateRef = new AtomicReference<>();
+    when(ruleTriggerStateRepository.findByRuleIdAndTargetKey(11L, "BTC-USDT"))
+      .thenAnswer(invocation -> Optional.ofNullable(stateRef.get()));
+    when(ruleTriggerStateRepository.save(any(RuleTriggerStateEntity.class)))
+      .thenAnswer(invocation -> {
+        RuleTriggerStateEntity state = invocation.getArgument(0);
+        if (state.getId() == null) {
+          ReflectionTestUtils.setField(state, "id", 110L);
+        }
+        stateRef.set(state);
+        return state;
+      });
+
+    // 1) First hit after rule creation should create an alert.
+    service.evaluateOnce();
+    verify(alertEventRepository, times(1)).save(any(AlertEventEntity.class));
+    assertEquals(true, stateRef.get().getActive());
+    Instant firstTriggeredAt = stateRef.get().getLastTriggeredAt();
+
+    // 2) Price drops below threshold, state resets.
+    snapshot.setPrice(new BigDecimal("90"));
+    service.evaluateOnce();
+    assertEquals(false, stateRef.get().getActive());
+
+    // 3) Hit again inside cooldown window, should be blocked.
+    snapshot.setPrice(new BigDecimal("130"));
+    service.evaluateOnce();
+    verify(alertEventRepository, times(1)).save(any(AlertEventEntity.class));
+    assertEquals(false, stateRef.get().getActive());
+    assertEquals(firstTriggeredAt, stateRef.get().getLastTriggeredAt());
+
+    // 4) Move lastTriggeredAt outside cooldown window, should trigger again.
+    stateRef.get().setLastTriggeredAt(Instant.now().minusSeconds(120));
+    snapshot.setPrice(new BigDecimal("140"));
+    service.evaluateOnce();
+    verify(alertEventRepository, times(2)).save(any(AlertEventEntity.class));
+    assertEquals(true, stateRef.get().getActive());
+  }
+
   private String buildPriceRuleJson(String symbol, String threshold) throws Exception {
     return buildPriceRuleJson(symbol, threshold, null);
   }
