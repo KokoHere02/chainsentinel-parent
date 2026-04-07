@@ -77,6 +77,26 @@ class AddressAlertMatcherTest {
     }
 
     @Test
+    void shouldNotCreateDuplicateAlertForSameRuleAndAssetEvent() {
+        AssetEventEntity event = new AssetEventEntity();
+        ReflectionTestUtils.setField(event, "id", 66L);
+
+        AlertRuleEntity rule = new AlertRuleEntity();
+        ReflectionTestUtils.setField(rule, "id", 7L);
+        rule.setType(AlertRuleType.ADDRESS);
+        rule.setSeverity("HIGH");
+        rule.setConditionJson("{\"version\":1}");
+
+        when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(rule));
+        when(ruleConditionParser.matches(rule.getConditionJson(), event)).thenReturn(true);
+        when(alertEventRepository.existsByRuleIdAndAssetEventId(7L, 66L)).thenReturn(true);
+
+        matcher.evaluate(event);
+
+        verify(alertEventRepository, never()).save(any(AlertEventEntity.class));
+    }
+
+    @Test
     void shouldCreateAlertsForMatchedAddressAndAmountRules() {
         AssetEventEntity event = new AssetEventEntity();
         ReflectionTestUtils.setField(event, "id", 99L);
