@@ -37,6 +37,9 @@ private String lastError;
 @Column(name = "sent_at")
 private Instant sentAt;
 
+@Column(name = "created_at", nullable = false)
+private Instant createdAt;
+
 public Long getId() {
 return id;
 }
@@ -95,5 +98,13 @@ return sentAt;
 
 public void setSentAt(Instant sentAt) {
 this.sentAt = sentAt;
+}
+
+public Instant getCreatedAt() {
+return createdAt;
+}
+
+public void setCreatedAt(Instant createdAt) {
+this.createdAt = createdAt;
 }
 }
