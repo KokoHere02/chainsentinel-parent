@@ -1,6 +1,7 @@
 package com.chainsentinel.infra.repository;
 
 import com.chainsentinel.infra.entity.AlertEventEntity;
+import com.chainsentinel.infra.repository.projection.AlertFailureSummaryProjection;
 import com.chainsentinel.infra.repository.projection.RuleHitCountProjection;
 import java.time.Instant;
 import java.util.List;
@@ -22,4 +23,12 @@ where ae.createdAt >= :since
 group by ae.ruleId
 """)
 List<RuleHitCountProjection> countHitsByRuleSince(@Param("since") Instant since);
+
+@Query("""
+select ae.sendStatus as sendStatus, ae.lastError as lastError, count(ae) as failureCount
+from AlertEventEntity ae
+where ae.createdAt >= :since and ae.sendStatus <> 'SENT'
+group by ae.sendStatus, ae.lastError
+""")
+List<AlertFailureSummaryProjection> summarizeFailuresSince(@Param("since") Instant since);
 }
