@@ -48,7 +48,13 @@ class DefaultAlertQueryServiceTest {
         Page<AlertEventEntity> page = new PageImpl<>(List.of(entity), pageable, 1);
         when(alertEventRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
 
-        AlertQuery query = new AlertQuery("SENT", "HIGH", 21L);
+        AlertQuery query = new AlertQuery(
+            "SENT",
+            "HIGH",
+            21L,
+            Instant.parse("2026-03-28T00:00:00Z"),
+            Instant.parse("2026-03-29T00:00:00Z")
+        );
         Page<AlertView> result = service.query(query, pageable);
 
         assertEquals(1, result.getTotalElements());

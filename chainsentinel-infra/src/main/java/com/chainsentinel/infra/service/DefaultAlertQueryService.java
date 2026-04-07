@@ -36,6 +36,12 @@ predicates.add(cb.equal(root.get("severity"), query.severity()));
 if (query.ruleId() != null) {
 predicates.add(cb.equal(root.get("ruleId"), query.ruleId()));
 }
+if (query.sentAtFrom() != null) {
+predicates.add(cb.greaterThanOrEqualTo(root.get("sentAt"), query.sentAtFrom()));
+}
+if (query.sentAtTo() != null) {
+predicates.add(cb.lessThanOrEqualTo(root.get("sentAt"), query.sentAtTo()));
+}
 return cb.and(predicates.toArray(new Predicate[0]));
 };
 
