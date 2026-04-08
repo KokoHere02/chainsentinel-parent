@@ -1,11 +1,15 @@
-package com.chainsentinel.infra.service;
+﻿package com.chainsentinel.infra.service;
 
-import com.chainsentinel.infra.repository.AlertEventRepository;
-import com.chainsentinel.infra.repository.projection.AlertFailureSummaryProjection;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+
+import com.chainsentinel.infra.entity.AlertEventEntity;
+import com.chainsentinel.infra.repository.AlertEventRepository;
+import com.chainsentinel.infra.repository.projection.AlertFailureSummaryProjection;
+
 import org.springframework.stereotype.Service;
 
 @Service
@@ -18,9 +22,22 @@ public class AlertFailureSummaryService {
 	}
 
 	public AlertFailureSummaryView summarize() {
-		List<FailureItem> last24h = toItems(alertEventRepository.summarizeFailuresSince(Instant.now().minus(24, ChronoUnit.HOURS)));
-		List<FailureItem> last7d = toItems(alertEventRepository.summarizeFailuresSince(Instant.now().minus(7, ChronoUnit.DAYS)));
+		List<FailureItem> last24h = toItems(alertEventRepository.summarizeFailuresSince(Instant.now().minus(24,
+			ChronoUnit.HOURS)));
+		List<FailureItem> last7d = toItems(alertEventRepository.summarizeFailuresSince(Instant.now().minus(7,
+			ChronoUnit.DAYS)));
 		return new AlertFailureSummaryView(last24h, last7d, Instant.now());
+	}
+
+	public LastFailureView lastFailure() {
+		Optional<AlertEventEntity> lastFailure = alertEventRepository.findTopBySendStatusNotOrderByCreatedAtDesc(
+			"SENT");
+		if (lastFailure.isEmpty()) {
+			return new LastFailureView(false, null, null, null);
+		}
+		AlertEventEntity entity = lastFailure.get();
+		String error = entity.getLastError();
+		return new LastFailureView(true, entity.getId(), error == null ? "(none)" : error, entity.getCreatedAt());
 	}
 
 	private List<FailureItem> toItems(List<AlertFailureSummaryProjection> rows) {
@@ -47,4 +64,13 @@ public class AlertFailureSummaryService {
 		Long count
 	) {
 	}
+
+	public record LastFailureView(
+		boolean exists,
+		Long alertId,
+		String lastError,
+		Instant lastFailedAt
+	) {
+	}
+
 }
