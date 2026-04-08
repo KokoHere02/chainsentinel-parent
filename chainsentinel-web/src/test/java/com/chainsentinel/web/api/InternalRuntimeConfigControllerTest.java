@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.chainsentinel.infra.job.PriceStreamSubscriptionJob;
 import com.chainsentinel.price.config.PriceProviderRuntimeConfig;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,24 +19,40 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 @ExtendWith(MockitoExtension.class)
 class InternalRuntimeConfigControllerTest {
 
-  @Mock
-  private PriceProviderRuntimeConfig priceProviderRuntimeConfig;
+	@Mock
+	private PriceProviderRuntimeConfig priceProviderRuntimeConfig;
 
-  private MockMvc mockMvc;
+	@Mock
+	private PriceStreamSubscriptionJob priceStreamSubscriptionJob;
 
-  @BeforeEach
-  void setUp() {
-    InternalRuntimeConfigController controller = new InternalRuntimeConfigController(priceProviderRuntimeConfig);
-    mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
-  }
+	private MockMvc mockMvc;
 
-  @Test
-  void shouldRefreshPriceRuntimeConfigCache() throws Exception {
-    mockMvc.perform(post("/api/internal/runtime-config/price/refresh"))
-      .andExpect(status().isOk())
-      .andExpect(jsonPath("$.refreshed", is(true)))
-      .andExpect(jsonPath("$.refreshedAt").exists());
+	@BeforeEach
+	void setUp() {
+		InternalRuntimeConfigController controller = new InternalRuntimeConfigController(
+			priceProviderRuntimeConfig,
+			priceStreamSubscriptionJob
+		);
+		mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+	}
 
-    verify(priceProviderRuntimeConfig).refreshCache();
-  }
+	@Test
+	void shouldRefreshPriceRuntimeConfigCache() throws Exception {
+		mockMvc.perform(post("/api/internal/runtime-config/price/refresh"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.refreshed", is(true)))
+			.andExpect(jsonPath("$.refreshedAt").exists());
+
+		verify(priceProviderRuntimeConfig).refreshCache();
+	}
+
+	@Test
+	void shouldRefreshPriceWsSubscriptions() throws Exception {
+		mockMvc.perform(post("/api/internal/runtime-config/price-ws/refresh"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.refreshed", is(true)))
+			.andExpect(jsonPath("$.refreshedAt").exists());
+
+		verify(priceStreamSubscriptionJob).refreshSubscriptions();
+	}
 }
