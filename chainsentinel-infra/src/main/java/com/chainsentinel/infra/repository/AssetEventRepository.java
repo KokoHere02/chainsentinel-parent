@@ -10,17 +10,19 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
-public interface AssetEventRepository extends JpaRepository<AssetEventEntity, Long>, JpaSpecificationExecutor<AssetEventEntity> {
+public interface AssetEventRepository extends JpaRepository<AssetEventEntity, Long>,
+	JpaSpecificationExecutor<AssetEventEntity> {
 
-Optional<AssetEventEntity> findByChainAndTxHashAndLogIndex(String chain, String txHash, Integer logIndex);
+	Optional<AssetEventEntity> findByChainAndTxHashAndLogIndex(String chain, String txHash, Integer logIndex);
 
-long countByChainAndNetworkAndStatus(String chain, String network, EventStatus status);
+	long countByChainAndNetworkAndStatus(String chain, String network, EventStatus status);
 
-List<AssetEventEntity> findByChainAndNetworkAndStatusAndIdGreaterThanOrderByIdAsc(
-String chain,
-String network,
-EventStatus status,
-Long id,
-Pageable pageable
-);
+	List<AssetEventEntity> findByChainAndNetworkAndStatusAndIdGreaterThanOrderByIdAsc(
+		String chain,
+		String network,
+		EventStatus status,
+		Long id,
+		Pageable pageable
+	);
+
 }

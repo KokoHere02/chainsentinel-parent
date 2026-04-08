@@ -16,7 +16,7 @@ class RuleTemplateControllerTest {
 
 	@BeforeEach
 	void setUp() {
-		RuleTemplateController controller = new RuleTemplateController();
+		RuleTemplateController controller = new RuleTemplateController(null);
 		mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 	}
 

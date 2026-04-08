@@ -11,55 +11,56 @@ import jakarta.persistence.Table;
 @Table(name = "monitor_address")
 public class MonitorAddressEntity {
 
-@Id
-@GeneratedValue(strategy = GenerationType.IDENTITY)
-private Long id;
+	@Id
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	private Long id;
 
-@Column(name = "chain_name", nullable = false, length = 32)
-private String chain;
+	@Column(name = "chain_name", nullable = false, length = 32)
+	private String chain;
 
-@Column(name = "address", nullable = false, length = 64)
-private String address;
+	@Column(name = "address", nullable = false, length = 64)
+	private String address;
 
-@Column(name = "tag", length = 64)
-private String tag;
+	@Column(name = "tag", length = 64)
+	private String tag;
 
-@Column(name = "enabled", nullable = false)
-private Boolean enabled;
+	@Column(name = "enabled", nullable = false)
+	private Boolean enabled;
 
-public Long getId() {
-return id;
-}
+	public Long getId() {
+		return id;
+	}
 
-public String getChain() {
-return chain;
-}
+	public String getChain() {
+		return chain;
+	}
 
-public void setChain(String chain) {
-this.chain = chain;
-}
+	public void setChain(String chain) {
+		this.chain = chain;
+	}
 
-public String getAddress() {
-return address;
-}
+	public String getAddress() {
+		return address;
+	}
 
-public void setAddress(String address) {
-this.address = address;
-}
+	public void setAddress(String address) {
+		this.address = address;
+	}
 
-public String getTag() {
-return tag;
-}
+	public String getTag() {
+		return tag;
+	}
 
-public void setTag(String tag) {
-this.tag = tag;
-}
+	public void setTag(String tag) {
+		this.tag = tag;
+	}
 
-public Boolean getEnabled() {
-return enabled;
-}
+	public Boolean getEnabled() {
+		return enabled;
+	}
 
-public void setEnabled(Boolean enabled) {
-this.enabled = enabled;
-}
+	public void setEnabled(Boolean enabled) {
+		this.enabled = enabled;
+	}
+
 }

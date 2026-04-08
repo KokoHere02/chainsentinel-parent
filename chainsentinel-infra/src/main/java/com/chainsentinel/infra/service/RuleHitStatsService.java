@@ -1,15 +1,17 @@
 package com.chainsentinel.infra.service;
 
-import com.chainsentinel.core.model.AlertRuleType;
-import com.chainsentinel.infra.entity.AlertRuleEntity;
-import com.chainsentinel.infra.repository.AlertEventRepository;
-import com.chainsentinel.infra.repository.AlertRuleRepository;
-import com.chainsentinel.infra.repository.projection.RuleHitCountProjection;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import com.chainsentinel.core.model.AlertRuleType;
+import com.chainsentinel.infra.entity.AlertRuleEntity;
+import com.chainsentinel.infra.repository.AlertEventRepository;
+import com.chainsentinel.infra.repository.AlertRuleRepository;
+import com.chainsentinel.infra.repository.projection.RuleHitCountProjection;
+
 import org.springframework.stereotype.Service;
 
 @Service
@@ -27,8 +29,10 @@ public class RuleHitStatsService {
 		List<AlertRuleEntity> rules = enabledOnly
 			? alertRuleRepository.findByEnabledTrue()
 			: alertRuleRepository.findAll();
-		Map<Long, Long> hit24h = toCountMap(alertEventRepository.countHitsByRuleSince(Instant.now().minus(24, ChronoUnit.HOURS)));
-		Map<Long, Long> hit7d = toCountMap(alertEventRepository.countHitsByRuleSince(Instant.now().minus(7, ChronoUnit.DAYS)));
+		Map<Long, Long> hit24h = toCountMap(alertEventRepository.countHitsByRuleSince(Instant.now().minus(24,
+			ChronoUnit.HOURS)));
+		Map<Long, Long> hit7d = toCountMap(alertEventRepository.countHitsByRuleSince(Instant.now().minus(7,
+			ChronoUnit.DAYS)));
 
 		return rules.stream()
 			.sorted((a, b) -> {
@@ -48,7 +52,8 @@ public class RuleHitStatsService {
 	}
 
 	private Map<Long, Long> toCountMap(List<RuleHitCountProjection> rows) {
-		return rows.stream().collect(Collectors.toMap(RuleHitCountProjection::getRuleId, RuleHitCountProjection::getHitCount, Long::sum));
+		return rows.stream().collect(Collectors.toMap(RuleHitCountProjection::getRuleId,
+			RuleHitCountProjection::getHitCount, Long::sum));
 	}
 
 	public record RuleHitStatsView(
@@ -60,4 +65,5 @@ public class RuleHitStatsService {
 		Long hitCount7d
 	) {
 	}
+
 }

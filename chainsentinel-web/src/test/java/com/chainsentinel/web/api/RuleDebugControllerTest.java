@@ -17,6 +17,7 @@ import com.chainsentinel.infra.rule.PriceRuleConditionParser;
 import com.chainsentinel.infra.rule.RuleConditionJsonParser;
 import com.chainsentinel.web.api.support.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,7 +48,7 @@ class RuleDebugControllerTest {
 		RuleDebugController controller = new RuleDebugController(
 			alertRuleService,
 			ruleConditionJsonParser,
-			eventRuleConditionParser,
+			new SimpleMeterRegistry(),
 			true
 		);
 		mockMvc = MockMvcBuilders
@@ -166,7 +167,7 @@ class RuleDebugControllerTest {
 		RuleDebugController disabledController = new RuleDebugController(
 			alertRuleService,
 			ruleConditionJsonParser,
-			eventRuleConditionParser,
+			new SimpleMeterRegistry(),
 			false
 		);
 		MockMvc disabledMvc = MockMvcBuilders
@@ -219,6 +220,38 @@ class RuleDebugControllerTest {
 			.andExpect(jsonPath("$[1].index", is(1)))
 			.andExpect(jsonPath("$[1].result.matched", is(false)))
 			.andExpect(jsonPath("$[1].result.failedCondition.field", is("price")));
+	}
+
+	@Test
+	void shouldBatchTestMatchReturnOnlyFailedWhenRequested() throws Exception {
+		when(alertRuleService.getById(104L))
+			.thenReturn(new AlertRuleView(
+				104L,
+				"price-rule-only-failed",
+				AlertRuleType.PRICE_THRESHOLD,
+				"""
+				{"version":1,"type":"PRICE","condition":{"symbol":"BTC-USDT","op":"gte","threshold":"100000","cooldownSec":0}}
+				""",
+				"HIGH",
+				true
+			));
+
+		mockMvc.perform(post("/api/rules/104/test-match/batch")
+				.contentType(MediaType.APPLICATION_JSON)
+				.content("""
+					{
+					  "onlyFailed": true,
+					  "samples": [
+					    {"currentPrice": "120000"},
+					    {"currentPrice": "80000"}
+					  ]
+					}
+					"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.length()", is(1)))
+			.andExpect(jsonPath("$[0].index", is(1)))
+			.andExpect(jsonPath("$[0].result.matched", is(false)))
+			.andExpect(jsonPath("$[0].result.failedCondition.field", is("price")));
 	}
 
 	@Test

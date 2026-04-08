@@ -27,6 +27,8 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,29 +45,42 @@ import org.springframework.web.bind.annotation.RestController;
 public class RuleDebugController {
 
 	private static final Logger log = LoggerFactory.getLogger(RuleDebugController.class);
+	private static final String METRIC_RULE_TEST_MATCH_TOTAL = "rule_test_match_total";
+	private static final String METRIC_RULE_TEST_MATCH_FAIL_TOTAL = "rule_test_match_fail_total";
+	private static final String METRIC_RULE_TEST_MATCH_LATENCY = "rule_test_match_latency";
 
 	private final AlertRuleService alertRuleService;
 	private final RuleConditionJsonParser ruleConditionJsonParser;
-	private final EventRuleConditionParser eventRuleConditionParser;
+	private final MeterRegistry meterRegistry;
 	private final boolean testMatchEnabled;
 
 	public RuleDebugController(
 		AlertRuleService alertRuleService,
 		RuleConditionJsonParser ruleConditionJsonParser,
-		EventRuleConditionParser eventRuleConditionParser,
+		MeterRegistry meterRegistry,
 		@Value("${chainsentinel.debug.rule-test-match-enabled:false}") boolean testMatchEnabled
 	) {
 		this.alertRuleService = alertRuleService;
 		this.ruleConditionJsonParser = ruleConditionJsonParser;
-		this.eventRuleConditionParser = eventRuleConditionParser;
+		this.meterRegistry = meterRegistry;
 		this.testMatchEnabled = testMatchEnabled;
 	}
 
 	@PostMapping("/{id}/test-match")
 	public RuleTestMatchResponse testMatch(@PathVariable Long id, @RequestBody @Valid RuleTestMatchRequest request) {
+		Timer.Sample timerSample = Timer.start(meterRegistry);
 		log.info("rule.test_match.request ruleId={} mode=single samples=1", id);
-		AlertRuleView rule = requireEnabledAndGetRule(id);
-		return toResponse(evaluate(rule, request.sample()));
+		try {
+			AlertRuleView rule = requireEnabledAndGetRule(id);
+			RuleTestMatchResponse response = toResponse(evaluate(rule, request.sample()));
+			recordSuccess("single");
+			return response;
+		} catch (RuntimeException ex) {
+			recordFailure("single", ex);
+			throw ex;
+		} finally {
+			recordLatency("single", timerSample);
+		}
 	}
 
 	@PostMapping("/{id}/test-match/batch")
@@ -73,15 +88,41 @@ public class RuleDebugController {
 		@PathVariable Long id,
 		@RequestBody @Valid RuleTestMatchBatchRequest request
 	) {
+		Timer.Sample timerSample = Timer.start(meterRegistry);
 		log.info("rule.test_match.request ruleId={} mode=batch samples={}", id, request.samples().size());
-		AlertRuleView rule = requireEnabledAndGetRule(id);
-		List<BatchRuleTestMatchItem> results = new ArrayList<>();
-		for (int i = 0; i < request.samples().size(); i++) {
-			JsonNode sample = request.samples().get(i);
-			MatchDetail detail = evaluate(rule, sample);
-			results.add(new BatchRuleTestMatchItem(i, toResponse(detail)));
+		try {
+			AlertRuleView rule = requireEnabledAndGetRule(id);
+			List<BatchRuleTestMatchItem> results = new ArrayList<>();
+			for (int i = 0; i < request.samples().size(); i++) {
+				JsonNode sample = request.samples().get(i);
+				MatchDetail detail = evaluate(rule, sample);
+				if (Boolean.TRUE.equals(request.onlyFailed()) && detail.matched()) {
+					continue;
+				}
+				results.add(new BatchRuleTestMatchItem(i, toResponse(detail)));
+			}
+			recordSuccess("batch");
+			return results;
+		} catch (RuntimeException ex) {
+			recordFailure("batch", ex);
+			throw ex;
+		} finally {
+			recordLatency("batch", timerSample);
 		}
-		return results;
+	}
+
+	private void recordSuccess(String mode) {
+		meterRegistry.counter(METRIC_RULE_TEST_MATCH_TOTAL, "mode", mode, "status", "success").increment();
+	}
+
+	private void recordFailure(String mode, RuntimeException ex) {
+		String error = ex.getClass().getSimpleName();
+		meterRegistry.counter(METRIC_RULE_TEST_MATCH_TOTAL, "mode", mode, "status", "error").increment();
+		meterRegistry.counter(METRIC_RULE_TEST_MATCH_FAIL_TOTAL, "mode", mode, "error", error).increment();
+	}
+
+	private void recordLatency(String mode, Timer.Sample timerSample) {
+		timerSample.stop(meterRegistry.timer(METRIC_RULE_TEST_MATCH_LATENCY, "mode", mode));
 	}
 
 	private AlertRuleView requireEnabledAndGetRule(Long id) {
@@ -299,8 +340,14 @@ public class RuleDebugController {
 	}
 
 	public record RuleTestMatchBatchRequest(
-		@NotNull @Size(min = 1, max = 100) List<@NotNull JsonNode> samples
+		@NotNull @Size(min = 1, max = 100) List<@NotNull JsonNode> samples,
+		Boolean onlyFailed
 	) {
+		public RuleTestMatchBatchRequest {
+			if (onlyFailed == null) {
+				onlyFailed = false;
+			}
+		}
 	}
 
 	public record RuleTestMatchResponse(
