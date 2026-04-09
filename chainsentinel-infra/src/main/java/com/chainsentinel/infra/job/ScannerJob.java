@@ -26,10 +26,10 @@ public class ScannerJob {
 		this.scannerProperties = scannerProperties;
 	}
 
-	@Scheduled(
-		fixedDelayString = "${chainsentinel.scanner.scan-interval-ms:10000}",
-		initialDelayString = "${chainsentinel.scanner.initial-delay-ms:3000}"
-	)
+//	@Scheduled(
+//		fixedDelayString = "${chainsentinel.scanner.scan-interval-ms:10000}",
+//		initialDelayString = "${chainsentinel.scanner.initial-delay-ms:3000}"
+//	)
 	public void run() {
 		if (!running.compareAndSet(false, true)) {
 			log.warn("Skip scanner run because previous run is still in progress");

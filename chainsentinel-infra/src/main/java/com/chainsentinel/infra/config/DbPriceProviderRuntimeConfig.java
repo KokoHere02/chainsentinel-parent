@@ -1,4 +1,4 @@
-﻿package com.chainsentinel.infra.config;
+package com.chainsentinel.infra.config;
 
 import java.time.Duration;
 import java.util.LinkedHashMap;

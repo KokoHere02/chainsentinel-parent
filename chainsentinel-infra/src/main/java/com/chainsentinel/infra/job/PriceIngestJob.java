@@ -57,7 +57,7 @@ public class PriceIngestJob {
 		this.priceIngestProperties = priceIngestProperties;
 	}
 
-	@Scheduled(fixedDelayString = "${chainsentinel.price.ingest.interval-ms:15000}")
+//	@Scheduled(fixedDelayString = "${chainsentinel.price.ingest.interval-ms:15000}")
 	public void run() {
 		if (!priceIngestProperties.isEnabled()) {
 			return;
