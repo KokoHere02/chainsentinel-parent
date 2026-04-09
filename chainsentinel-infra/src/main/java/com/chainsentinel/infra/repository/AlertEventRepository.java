@@ -1,4 +1,4 @@
-﻿package com.chainsentinel.infra.repository;
+package com.chainsentinel.infra.repository;
 
 import java.time.Instant;
 import java.util.List;

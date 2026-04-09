@@ -1,4 +1,4 @@
-﻿package com.chainsentinel.infra.service;
+package com.chainsentinel.infra.service;
 
 import java.time.Instant;
 import java.util.ArrayList;
