@@ -13,6 +13,8 @@ import com.chainsentinel.price.stream.PriceStreamManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
@@ -52,6 +54,17 @@ public class PriceStreamSubscriptionJob {
 			return;
 		}
 		priceStreamManager.refreshSubscriptions(queries);
+	}
+
+	@EventListener(ApplicationReadyEvent.class)
+	public void warmupSubscriptionsOnStartup() {
+		try {
+			log.info("price.ws.startup.refresh.begin");
+			refreshSubscriptions();
+			log.info("price.ws.startup.refresh.done");
+		} catch (Exception ex) {
+			log.warn("price.ws.startup.refresh.failed error={}", ex.getMessage());
+		}
 	}
 
 	private PriceQuery toQuery(PricePullTargetEntity target) {

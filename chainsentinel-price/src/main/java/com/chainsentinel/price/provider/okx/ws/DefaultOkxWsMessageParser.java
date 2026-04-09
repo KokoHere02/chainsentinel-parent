@@ -25,6 +25,18 @@ public class DefaultOkxWsMessageParser implements OkxWsMessageParser {
 		}
 		try {
 			JsonNode root = objectMapper.readTree(payload);
+			JsonNode eventNode = root.get("event");
+			if (eventNode != null && !eventNode.isNull()) {
+				String event = eventNode.asText();
+				String code = root.path("code").asText();
+				String msg = root.path("msg").asText();
+				if ("error".equalsIgnoreCase(event)) {
+					log.warn("price.ws.okx.event.error code={} msg={}", code, msg);
+				} else {
+					log.info("price.ws.okx.event event={} code={} msg={}", event, code, msg);
+				}
+				return Optional.empty();
+			}
 			JsonNode arg = root.path("arg");
 			String channel = arg.path("channel").asText();
 			if (!CHANNEL_TICKERS.equalsIgnoreCase(channel)) {
