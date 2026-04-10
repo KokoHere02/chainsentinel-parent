@@ -35,5 +35,25 @@ public class InternalPriceTickController {
 		}
 		return priceTickQueryService.query(provider, instId, fromTs, toTs, limit);
 	}
-}
 
+	@GetMapping("/aggregate")
+	public List<PriceTickQueryService.PriceTickAggregateView> aggregate(
+		@RequestParam(name = "provider", required = false) String provider,
+		@RequestParam(name = "instId") String instId,
+		@RequestParam(name = "from", required = false) Long fromTs,
+		@RequestParam(name = "to", required = false) Long toTs,
+		@RequestParam(name = "bucketMs", defaultValue = "60000") long bucketMs,
+		@RequestParam(name = "limit", defaultValue = "5000") int limit
+	) {
+		if (limit < 1 || limit > 20000) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 20000");
+		}
+		if (bucketMs < 1000 || bucketMs > 86400000L) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "bucketMs must be between 1000 and 86400000");
+		}
+		if (fromTs != null && toTs != null && fromTs > toTs) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "from must be less than or equal to to");
+		}
+		return priceTickQueryService.aggregate(provider, instId, fromTs, toTs, bucketMs, limit);
+	}
+}

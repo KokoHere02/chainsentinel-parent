@@ -71,5 +71,41 @@ class InternalPriceTickControllerTest {
 				.param("to", "1"))
 			.andExpect(status().isBadRequest());
 	}
-}
 
+	@Test
+	void shouldQueryPriceTickAggregate() throws Exception {
+		PriceTickQueryService.PriceTickAggregateView view = new PriceTickQueryService.PriceTickAggregateView(
+			1700000000000L,
+			new BigDecimal("70100.1"),
+			new BigDecimal("70000.1"),
+			new BigDecimal("70200.1"),
+			12L
+		);
+		when(priceTickQueryService.aggregate(eq("okx_ws"), eq("BTC-USDT"), eq(1700000000000L), eq(1700003600000L), eq(60000L), eq(1000)))
+			.thenReturn(List.of(view));
+
+		mockMvc.perform(get("/api/internal/price-ticks/aggregate")
+				.param("provider", "okx_ws")
+				.param("instId", "BTC-USDT")
+				.param("from", "1700000000000")
+				.param("to", "1700003600000")
+				.param("bucketMs", "60000")
+				.param("limit", "1000"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$[0].bucketStartTs", is(1700000000000L)))
+			.andExpect(jsonPath("$[0].last", is(70100.1)))
+			.andExpect(jsonPath("$[0].min", is(70000.1)))
+			.andExpect(jsonPath("$[0].max", is(70200.1)))
+			.andExpect(jsonPath("$[0].count", is(12)));
+
+		verify(priceTickQueryService).aggregate("okx_ws", "BTC-USDT", 1700000000000L, 1700003600000L, 60000L, 1000);
+	}
+
+	@Test
+	void shouldReturnBadRequestWhenBucketMsInvalid() throws Exception {
+		mockMvc.perform(get("/api/internal/price-ticks/aggregate")
+				.param("instId", "BTC-USDT")
+				.param("bucketMs", "500"))
+			.andExpect(status().isBadRequest());
+	}
+}
