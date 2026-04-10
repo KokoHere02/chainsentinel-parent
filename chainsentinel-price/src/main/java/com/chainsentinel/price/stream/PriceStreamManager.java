@@ -16,10 +16,12 @@ public class PriceStreamManager {
 
 	private final List<PriceStreamProvider> providers;
 	private final PriceCache priceCache;
+	private final PriceTickBatchWriter priceTickBatchWriter;
 
-	public PriceStreamManager(List<PriceStreamProvider> providers, PriceCache priceCache) {
+	public PriceStreamManager(List<PriceStreamProvider> providers, PriceCache priceCache, PriceTickBatchWriter priceTickBatchWriter) {
 		this.providers = providers;
 		this.priceCache = priceCache;
+		this.priceTickBatchWriter = priceTickBatchWriter;
 		startEnabledProviders();
 	}
 
@@ -79,6 +81,12 @@ public class PriceStreamManager {
 			false
 		);
 		priceCache.put(query, cacheQuote);
+		try {
+			priceTickBatchWriter.enqueue(quote);
+		} catch (Exception ex) {
+			log.warn("price.ws.tick.enqueue.failed provider={} instId={} error={}",
+				quote.providerName(), quote.instId(), ex.getMessage());
+		}
 		log.debug("price.ws.quote provider={} instId={} price={}", quote.providerName(), quote.instId(), quote.price());
 	}
 }
