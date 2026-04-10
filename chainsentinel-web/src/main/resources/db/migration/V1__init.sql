@@ -82,5 +82,21 @@ CREATE TABLE IF NOT EXISTS alert_event (
     CONSTRAINT fk_alert_event_asset_event_id FOREIGN KEY (asset_event_id) REFERENCES asset_event (id)
 );
 
+CREATE TABLE IF NOT EXISTS price_tick (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    provider_name VARCHAR(32) NOT NULL,
+    inst_type VARCHAR(16) NOT NULL,
+    inst_id VARCHAR(64) NOT NULL,
+    base_symbol VARCHAR(32) NOT NULL,
+    quote_symbol VARCHAR(32) NOT NULL,
+    price DECIMAL(38, 18) NOT NULL,
+    quote_ts BIGINT NOT NULL,
+    ingested_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    UNIQUE KEY uk_provider_inst_ts (provider_name, inst_id, quote_ts),
+    KEY idx_inst_ts (inst_id, quote_ts),
+    KEY idx_base_quote_ts (base_symbol, quote_symbol, quote_ts),
+    KEY idx_ingested_at (ingested_at)
+);
+
 
 
