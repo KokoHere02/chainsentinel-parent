@@ -6,6 +6,7 @@ import java.util.Optional;
 import com.chainsentinel.infra.entity.PriceTickEntity;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -32,5 +33,9 @@ public interface PriceTickRepository extends JpaRepository<PriceTickEntity, Long
 		@Param("toTs") Long toTs,
 		Pageable pageable
 	);
+
+	@Modifying
+	@Query("delete from PriceTickEntity t where t.quoteTs < :cutoffTs")
+	int deleteByQuoteTsBefore(@Param("cutoffTs") Long cutoffTs);
 
 }
