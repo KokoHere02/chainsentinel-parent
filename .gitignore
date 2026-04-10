@@ -8,3 +8,4 @@ logs/
 .m2/
 docs
 ops
+chainsentinel-web/src/main/resources/application-dev.yml
