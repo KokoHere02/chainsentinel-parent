@@ -9,6 +9,7 @@ import com.chainsentinel.price.stream.PriceStreamSink;
 import com.chainsentinel.price.stream.ws.SimpleWebSocketClient;
 import com.chainsentinel.price.stream.ws.WebSocketMessageHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -33,10 +35,17 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 	private static final Logger log = LoggerFactory.getLogger(OkxWsPriceStreamProvider.class);
 	private static final String PROVIDER_NAME = "okx_ws";
 	private static final String DEFAULT_WS_URL = "wss://ws.okx.com:8443/ws/v5/public";
+	private static final String METRIC_WS_MESSAGE_TOTAL = "price_ws_message_total";
+	private static final String METRIC_WS_SUBSCRIBE_TOTAL = "price_ws_subscribe_total";
+	private static final String METRIC_WS_RECONNECT_TOTAL = "price_ws_reconnect_total";
+	private static final String METRIC_WS_KEEPALIVE_TOTAL = "price_ws_keepalive_total";
+	private static final String METRIC_WS_FIRST_QUOTE_TIMEOUT_TOTAL = "price_ws_first_quote_timeout_total";
+	private static final long FIRST_QUOTE_TIMEOUT_MS = 30000L;
 
 	private final PriceProviderRuntimeConfig runtimeConfig;
 	private final OkxWsMessageParser messageParser;
 	private final SimpleWebSocketClient client;
+	private final MeterRegistry meterRegistry;
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final AtomicBoolean started = new AtomicBoolean(false);
 	private final AtomicLong lastMessageAt = new AtomicLong(0L);
@@ -45,14 +54,20 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 	private final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
 	private final AtomicBoolean stopping = new AtomicBoolean(false);
 	private final List<PriceQuery> lastQueries = new CopyOnWriteArrayList<>();
+	private final Map<String, Long> pendingFirstQuoteAt = new ConcurrentHashMap<>();
 	private volatile ScheduledExecutorService keepaliveExecutor;
 	private volatile ScheduledExecutorService reconnectExecutor;
 	private volatile String wsUrl;
 	private volatile PriceStreamSink sink;
 
-	public OkxWsPriceStreamProvider(PriceProviderRuntimeConfig runtimeConfig, OkxWsMessageParser messageParser) {
+	public OkxWsPriceStreamProvider(
+		PriceProviderRuntimeConfig runtimeConfig,
+		OkxWsMessageParser messageParser,
+		MeterRegistry meterRegistry
+	) {
 		this.runtimeConfig = runtimeConfig;
 		this.messageParser = messageParser;
+		this.meterRegistry = meterRegistry;
 		this.client = new SimpleWebSocketClient(Duration.ofSeconds(10));
 	}
 
@@ -97,6 +112,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 				reconnectScheduled.set(false);
 				lastMessageAt.set(System.currentTimeMillis());
 				log.info("price.ws.okx.connected url={}", url);
+				incrementMessageCounter("connected");
 				startKeepalive();
 				resubscribeLastQueriesIfAny();
 			}
@@ -110,16 +126,27 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 					if ("ping".equalsIgnoreCase(trimmed)) {
 						client.sendText("pong");
 						log.debug("price.ws.okx.pong.sent");
+						incrementKeepaliveCounter("pong_send");
 						return;
 					}
 					if ("pong".equalsIgnoreCase(trimmed)) {
 						log.debug("price.ws.okx.pong.recv");
+						incrementKeepaliveCounter("pong_recv");
 						return;
 					}
 				}
 				logPayloadSample(text);
+				if (handleControlEventMessage(text)) {
+					return;
+				}
+				incrementMessageCounter("payload");
 				Optional<PriceStreamQuote> quote = messageParser.parse(text);
+				if (quote.isEmpty()) {
+					incrementMessageCounter("non_quote");
+				}
 				quote.ifPresent(q -> {
+					incrementMessageCounter("quote");
+					markFirstQuoteReceived(q.instId(), q.ts());
 					PriceStreamSink target = OkxWsPriceStreamProvider.this.sink;
 					if (target != null) {
 						target.onQuote(q);
@@ -134,6 +161,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			public void onClose(int statusCode, String reason) {
 				stopKeepalive();
 				log.warn("price.ws.okx.closed status={} reason={}", statusCode, reason);
+				incrementMessageCounter("closed");
 				scheduleReconnect("closed");
 			}
 
@@ -141,6 +169,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			public void onError(Throwable error) {
 				stopKeepalive();
 				log.warn("price.ws.okx.error error={}", error == null ? "unknown" : error.getMessage());
+				incrementMessageCounter("error");
 				scheduleReconnect("error");
 			}
 		});
@@ -151,9 +180,11 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 		replaceLastQueries(queries);
 		if (!client.isConnected()) {
 			log.warn("price.ws.okx.subscribe.skip reason=not_connected");
+			incrementSubscribeCounter("skip_not_connected");
 			return;
 		}
 		if (queries == null || queries.isEmpty()) {
+			incrementSubscribeCounter("skip_empty");
 			return;
 		}
 		List<String> instIds = new ArrayList<>();
@@ -164,11 +195,21 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			}
 		}
 		if (instIds.isEmpty()) {
+			incrementSubscribeCounter("skip_empty_inst");
 			return;
 		}
-		String payload = buildSubscribePayload(instIds);
-		client.sendText(payload);
-		log.info("price.ws.okx.subscribe.sent count={} instIds={}", instIds.size(), instIds);
+		long now = System.currentTimeMillis();
+		for (String instId : instIds) {
+			String payload = buildSubscribePayload(instId);
+			if (payload == null || payload.isBlank()) {
+				incrementSubscribeCounter("skip_blank_payload");
+				continue;
+			}
+			pendingFirstQuoteAt.put(instId, now);
+			client.sendText(payload);
+			incrementSubscribeCounter("sent");
+			log.info("price.ws.okx.subscribe.sent instId={}", instId);
+		}
 	}
 
 	@Override
@@ -188,24 +229,23 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 		return (query.symbol().trim() + "-" + query.quoteSymbol().trim()).toUpperCase(Locale.ROOT);
 	}
 
-	private String buildSubscribePayload(List<String> instIds) {
-		if (instIds == null || instIds.isEmpty()) {
+	private String buildSubscribePayload(String instId) {
+		if (instId == null || instId.isBlank()) {
 			return "";
 		}
 		List<Map<String, Object>> args = new ArrayList<>();
-		for (String instId : instIds) {
-			Map<String, Object> arg = new HashMap<>();
-			arg.put("channel", "tickers");
-			arg.put("instId", instId);
-			args.add(arg);
-		}
+		Map<String, Object> arg = new HashMap<>();
+		arg.put("channel", "tickers");
+		arg.put("instId", instId);
+		args.add(arg);
 		Map<String, Object> payload = new HashMap<>();
 		payload.put("op", "subscribe");
 		payload.put("args", args);
 		try {
 			return objectMapper.writeValueAsString(payload);
 		} catch (Exception ex) {
-			log.warn("price.ws.okx.subscribe.payload_failed count={} error={}", instIds.size(), ex.getMessage());
+			incrementSubscribeCounter("payload_failed");
+			log.warn("price.ws.okx.subscribe.payload_failed instId={} error={}", instId, ex.getMessage());
 			return "";
 		}
 	}
@@ -244,10 +284,13 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 		}
 		long idleMs = System.currentTimeMillis() - last;
 		if (idleMs < 20000L) {
+			checkFirstQuoteTimeout();
 			return;
 		}
 		client.sendText("ping");
+		incrementKeepaliveCounter("ping_send");
 		log.debug("price.ws.okx.ping idledMs={}", idleMs);
+		checkFirstQuoteTimeout();
 	}
 
 	private void logPayloadSample(String text) {
@@ -300,6 +343,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			reconnectExecutor = executor;
 		}
 		log.warn("price.ws.okx.reconnect.scheduled reason={} delaySec=3", reason);
+		incrementReconnectCounter(reason);
 		executor.schedule(() -> {
 			if (stopping.get() || !started.get() || client.isConnected()) {
 				reconnectScheduled.set(false);
@@ -317,5 +361,99 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			executor.shutdownNow();
 		}
 		reconnectExecutor = null;
+	}
+
+	private void incrementMessageCounter(String type) {
+		meterRegistry.counter(METRIC_WS_MESSAGE_TOTAL, "provider", PROVIDER_NAME, "type", type).increment();
+	}
+
+	private void incrementSubscribeCounter(String status) {
+		meterRegistry.counter(METRIC_WS_SUBSCRIBE_TOTAL, "provider", PROVIDER_NAME, "status", status).increment();
+	}
+
+	private void incrementReconnectCounter(String reason) {
+		meterRegistry.counter(METRIC_WS_RECONNECT_TOTAL, "provider", PROVIDER_NAME, "reason", reason).increment();
+	}
+
+	private void incrementKeepaliveCounter(String action) {
+		meterRegistry.counter(METRIC_WS_KEEPALIVE_TOTAL, "provider", PROVIDER_NAME, "action", action).increment();
+	}
+
+	private boolean handleControlEventMessage(String text) {
+		if (text == null || text.isBlank()) {
+			return false;
+		}
+		try {
+			Map<?, ?> root = objectMapper.readValue(text, Map.class);
+			Object eventObj = root.get("event");
+			if (eventObj == null) {
+				return false;
+			}
+			String event = String.valueOf(eventObj);
+			Object codeObj = root.get("code");
+			String code = codeObj == null ? "" : String.valueOf(codeObj);
+			Object msgObj = root.get("msg");
+			String msg = msgObj == null ? "" : String.valueOf(msgObj);
+			String instId = extractInstId(root.get("arg"));
+			if ("subscribe".equalsIgnoreCase(event)) {
+				log.info("price.ws.okx.subscribe.ack instId={} code={} msg={}", instId, code, msg);
+				incrementSubscribeCounter("ack");
+				return true;
+			}
+			if ("error".equalsIgnoreCase(event)) {
+				log.warn("price.ws.okx.event.error instId={} code={} msg={}", instId, code, msg);
+				incrementSubscribeCounter("ack_error");
+				return true;
+			}
+			log.info("price.ws.okx.event event={} instId={} code={} msg={}", event, instId, code, msg);
+			return true;
+		} catch (Exception ex) {
+			return false;
+		}
+	}
+
+	private String extractInstId(Object argObj) {
+		if (!(argObj instanceof Map<?, ?> arg)) {
+			return "";
+		}
+		Object instIdObj = arg.get("instId");
+		if (instIdObj == null) {
+			return "";
+		}
+		return String.valueOf(instIdObj);
+	}
+
+	private void markFirstQuoteReceived(String instId, long ts) {
+		if (instId == null || instId.isBlank()) {
+			return;
+		}
+		Long subscribedAt = pendingFirstQuoteAt.remove(instId);
+		if (subscribedAt == null) {
+			return;
+		}
+		long latencyMs = System.currentTimeMillis() - subscribedAt;
+		log.info("price.ws.okx.quote.first.by_inst instId={} latencyMs={} quoteTs={}", instId, latencyMs, ts);
+	}
+
+	private void checkFirstQuoteTimeout() {
+		if (pendingFirstQuoteAt.isEmpty()) {
+			return;
+		}
+		long now = System.currentTimeMillis();
+		for (Map.Entry<String, Long> entry : pendingFirstQuoteAt.entrySet()) {
+			String instId = entry.getKey();
+			Long subscribedAt = entry.getValue();
+			if (subscribedAt == null) {
+				continue;
+			}
+			long waitMs = now - subscribedAt;
+			if (waitMs < FIRST_QUOTE_TIMEOUT_MS) {
+				continue;
+			}
+			if (pendingFirstQuoteAt.remove(instId, subscribedAt)) {
+				log.warn("price.ws.okx.quote.first.timeout instId={} waitMs={}", instId, waitMs);
+				meterRegistry.counter(METRIC_WS_FIRST_QUOTE_TIMEOUT_TOTAL, "provider", PROVIDER_NAME, "instId", instId).increment();
+			}
+		}
 	}
 }
