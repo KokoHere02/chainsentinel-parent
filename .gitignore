@@ -9,3 +9,12 @@ logs/
 docs
 ops
 chainsentinel-web/src/main/resources/application-dev.yml
+.env
+.env.*
+*.pem
+*.p12
+*.jks
+chainsentinel-web/src/main/resources/application-local.yml
+chainsentinel-web/src/main/resources/application-prod.yml
+chainsentinel-web/src/main/resources/*-secret*.yml
+chainsentinel-web/src/main/resources/*-private*.yml
