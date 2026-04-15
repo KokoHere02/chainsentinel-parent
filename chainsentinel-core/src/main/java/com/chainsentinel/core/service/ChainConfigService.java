@@ -12,4 +12,8 @@ public interface ChainConfigService {
 	List<ChainConfigView> list();
 
 	Optional<ChainConfigView> find(String chain, String network);
+
+	boolean delete(String chain, String network);
+
+	Optional<ChainConfigView> setEnabled(String chain, String network, boolean enabled);
 }

@@ -1,14 +1,12 @@
 package com.chainsentinel.infra.service;
 
-import java.util.List;
-import java.util.Optional;
-
 import com.chainsentinel.core.service.ChainConfigService;
 import com.chainsentinel.core.service.dto.ChainConfigUpsertCommand;
 import com.chainsentinel.core.service.dto.ChainConfigView;
 import com.chainsentinel.infra.entity.ChainConfigEntity;
 import com.chainsentinel.infra.repository.ChainConfigRepository;
-
+import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,6 +56,31 @@ public class DefaultChainConfigService implements ChainConfigService {
 	public Optional<ChainConfigView> find(String chain, String network) {
 		return chainConfigRepository.findByChainAndNetwork(chain, network)
 			.map(this::toView);
+	}
+
+	@Override
+	@Transactional
+	public boolean delete(String chain, String network) {
+		Optional<ChainConfigEntity> existed = chainConfigRepository.findByChainAndNetwork(chain, network);
+		if (existed.isEmpty()) {
+			return false;
+		}
+		chainConfigRepository.delete(existed.get());
+		return true;
+	}
+
+	@Override
+	@Transactional
+	public Optional<ChainConfigView> setEnabled(String chain, String network, boolean enabled) {
+		Optional<ChainConfigEntity> existed = chainConfigRepository.findByChainAndNetwork(chain, network);
+		if (existed.isEmpty()) {
+			return Optional.empty();
+		}
+
+		ChainConfigEntity entity = existed.get();
+		entity.setEnabled(enabled);
+		ChainConfigEntity saved = chainConfigRepository.save(entity);
+		return Optional.of(toView(saved));
 	}
 
 	private ChainConfigView toView(ChainConfigEntity entity) {
