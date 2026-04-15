@@ -1,8 +1,5 @@
 package com.chainsentinel.infra.service;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import com.chainsentinel.core.model.EventStatus;
 import com.chainsentinel.core.service.EventQueryService;
 import com.chainsentinel.core.service.dto.EventQuery;
@@ -10,7 +7,8 @@ import com.chainsentinel.core.service.dto.EventView;
 import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.repository.AssetEventRepository;
 import jakarta.persistence.criteria.Predicate;
-
+import java.util.ArrayList;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -33,10 +31,25 @@ public class DefaultEventQueryService implements EventQueryService {
 			if (StringUtils.hasText(query.chain())) {
 				predicates.add(cb.equal(root.get("chain"), query.chain()));
 			}
+			if (StringUtils.hasText(query.network())) {
+				predicates.add(cb.equal(root.get("network"), query.network()));
+			}
 			if (StringUtils.hasText(query.address())) {
 				Predicate from = cb.equal(root.get("fromAddress"), query.address());
 				Predicate to = cb.equal(root.get("toAddress"), query.address());
 				predicates.add(cb.or(from, to));
+			}
+			if (StringUtils.hasText(query.fromAddress())) {
+				predicates.add(cb.equal(root.get("fromAddress"), query.fromAddress()));
+			}
+			if (StringUtils.hasText(query.toAddress())) {
+				predicates.add(cb.equal(root.get("toAddress"), query.toAddress()));
+			}
+			if (StringUtils.hasText(query.symbol())) {
+				predicates.add(cb.equal(root.get("symbol"), query.symbol()));
+			}
+			if (StringUtils.hasText(query.txHash())) {
+				predicates.add(cb.equal(root.get("txHash"), query.txHash()));
 			}
 			EventStatus status = query.status();
 			if (status != null) {

@@ -39,4 +39,35 @@ public class EventController {
 		EventQuery query = new EventQuery(chain, address, status, startTime, endTime);
 		return eventQueryService.query(query, pageable);
 	}
+
+	@GetMapping("/transfers")
+	public Page<EventView> listTransfers(
+		@RequestParam(name = "chain", required = false) String chain,
+		@RequestParam(name = "network", required = false) String network,
+		@RequestParam(name = "address", required = false) String address,
+		@RequestParam(name = "fromAddress", required = false) String fromAddress,
+		@RequestParam(name = "toAddress", required = false) String toAddress,
+		@RequestParam(name = "symbol", required = false) String symbol,
+		@RequestParam(name = "txHash", required = false) String txHash,
+		@RequestParam(name = "status", required = false) EventStatus status,
+		@RequestParam(name = "startTime", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant startTime,
+		@RequestParam(name = "endTime", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endTime,
+		@RequestParam(name = "page", defaultValue = "0") int page,
+		@RequestParam(name = "size", defaultValue = "20") int size
+	) {
+		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "blockNumber"));
+		EventQuery query = new EventQuery(
+			chain,
+			network,
+			address,
+			fromAddress,
+			toAddress,
+			symbol,
+			txHash,
+			status,
+			startTime,
+			endTime
+		);
+		return eventQueryService.query(query, pageable);
+	}
 }
