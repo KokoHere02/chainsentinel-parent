@@ -4,13 +4,16 @@ import com.chainsentinel.price.api.dto.PriceInstType;
 import com.chainsentinel.price.api.dto.PriceQuery;
 import com.chainsentinel.price.config.PriceProviderRuntimeConfig;
 import com.chainsentinel.price.stream.PriceStreamProvider;
+import com.chainsentinel.price.stream.PriceStreamProviderStatus;
 import com.chainsentinel.price.stream.PriceStreamQuote;
 import com.chainsentinel.price.stream.PriceStreamSink;
+import com.chainsentinel.price.stream.PriceStreamStatusAware;
 import com.chainsentinel.price.stream.ws.SimpleWebSocketClient;
 import com.chainsentinel.price.stream.ws.WebSocketMessageHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,13 +27,14 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
-public class OkxWsPriceStreamProvider implements PriceStreamProvider {
+public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStreamStatusAware {
 
 	private static final Logger log = LoggerFactory.getLogger(OkxWsPriceStreamProvider.class);
 	private static final String PROVIDER_NAME = "okx_ws";
@@ -41,6 +45,8 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 	private static final String METRIC_WS_KEEPALIVE_TOTAL = "price_ws_keepalive_total";
 	private static final String METRIC_WS_FIRST_QUOTE_TIMEOUT_TOTAL = "price_ws_first_quote_timeout_total";
 	private static final long FIRST_QUOTE_TIMEOUT_MS = 30000L;
+	private static final int RECONNECT_BASE_DELAY_SEC = 3;
+	private static final int RECONNECT_MAX_DELAY_SEC = 30;
 
 	private final PriceProviderRuntimeConfig runtimeConfig;
 	private final OkxWsMessageParser messageParser;
@@ -52,6 +58,14 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 	private final AtomicBoolean firstQuoteLogged = new AtomicBoolean(false);
 	private final AtomicLong lastPayloadLogAt = new AtomicLong(0L);
 	private final AtomicBoolean reconnectScheduled = new AtomicBoolean(false);
+	private final AtomicInteger reconnectAttempts = new AtomicInteger(0);
+	private final AtomicLong lastReconnectAtMs = new AtomicLong(0L);
+	private final AtomicLong lastErrorAtMs = new AtomicLong(0L);
+	private final AtomicLong lastResubscribeAtMs = new AtomicLong(0L);
+	private final AtomicInteger lastResubscribeCount = new AtomicInteger(0);
+	private volatile String lastReconnectReason;
+	private volatile String lastErrorType;
+	private volatile String lastErrorMessage;
 	private final AtomicBoolean stopping = new AtomicBoolean(false);
 	private final List<PriceQuery> lastQueries = new CopyOnWriteArrayList<>();
 	private final Map<String, Long> pendingFirstQuoteAt = new ConcurrentHashMap<>();
@@ -110,6 +124,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			@Override
 			public void onOpen() {
 				reconnectScheduled.set(false);
+				reconnectAttempts.set(0);
 				lastMessageAt.set(System.currentTimeMillis());
 				log.info("price.ws.okx.connected url={}", url);
 				incrementMessageCounter("connected");
@@ -168,7 +183,12 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			@Override
 			public void onError(Throwable error) {
 				stopKeepalive();
-				log.warn("price.ws.okx.error error={}", error == null ? "unknown" : error.getMessage());
+				String type = error == null ? "unknown" : error.getClass().getSimpleName();
+				String message = error == null ? "unknown" : error.getMessage();
+				lastErrorType = type;
+				lastErrorMessage = message;
+				lastErrorAtMs.set(System.currentTimeMillis());
+				log.warn("price.ws.okx.error type={} error={}", type, message);
 				incrementMessageCounter("error");
 				scheduleReconnect("error");
 			}
@@ -187,13 +207,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			incrementSubscribeCounter("skip_empty");
 			return;
 		}
-		List<String> instIds = new ArrayList<>();
-		for (PriceQuery query : queries) {
-			String instId = buildInstId(query);
-			if (instId != null && !instIds.contains(instId)) {
-				instIds.add(instId);
-			}
-		}
+		List<String> instIds = collectInstIds(queries);
 		if (instIds.isEmpty()) {
 			incrementSubscribeCounter("skip_empty_inst");
 			return;
@@ -210,6 +224,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			incrementSubscribeCounter("sent");
 			log.info("price.ws.okx.subscribe.sent instId={}", instId);
 		}
+		log.info("price.ws.okx.subscribe.sent_batch count={} instIds={}", instIds.size(), instIds);
 	}
 
 	@Override
@@ -322,14 +337,24 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 		if (lastQueries.isEmpty()) {
 			return;
 		}
-		subscribe(new ArrayList<>(lastQueries));
+		List<PriceQuery> queries = new ArrayList<>(lastQueries);
+		List<String> instIds = collectInstIds(queries);
+		lastResubscribeAtMs.set(System.currentTimeMillis());
+		lastResubscribeCount.set(instIds.size());
+		log.info("price.ws.okx.resubscribe.start count={} instIds={}", instIds.size(), instIds);
+		subscribe(queries);
 	}
 
 	private void scheduleReconnect(String reason) {
 		if (stopping.get() || !started.get()) {
 			return;
 		}
+		int attempt = reconnectAttempts.incrementAndGet();
+		lastReconnectReason = reason;
+		lastReconnectAtMs.set(System.currentTimeMillis());
+		int delaySec = computeReconnectDelaySec(attempt);
 		if (!reconnectScheduled.compareAndSet(false, true)) {
+			log.debug("price.ws.okx.reconnect.skip reason=already_scheduled attempt={} trigger={}", attempt, reason);
 			return;
 		}
 		ScheduledExecutorService executor = reconnectExecutor;
@@ -342,16 +367,18 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 			});
 			reconnectExecutor = executor;
 		}
-		log.warn("price.ws.okx.reconnect.scheduled reason={} delaySec=3", reason);
+		log.warn("price.ws.okx.reconnect.scheduled reason={} attempt={} delaySec={}", reason, attempt, delaySec);
 		incrementReconnectCounter(reason);
 		executor.schedule(() -> {
 			if (stopping.get() || !started.get() || client.isConnected()) {
 				reconnectScheduled.set(false);
 				return;
 			}
-			log.info("price.ws.okx.reconnect.start");
+			// Release schedule flag before connect so a failed connect can schedule next retry.
+			reconnectScheduled.set(false);
+			log.info("price.ws.okx.reconnect.start attempt={} reason={} url={}", attempt, reason, wsUrl);
 			connectInternal();
-		}, 3, TimeUnit.SECONDS);
+		}, delaySec, TimeUnit.SECONDS);
 	}
 
 	private void stopReconnect() {
@@ -455,5 +482,53 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider {
 				meterRegistry.counter(METRIC_WS_FIRST_QUOTE_TIMEOUT_TOTAL, "provider", PROVIDER_NAME, "instId", instId).increment();
 			}
 		}
+	}
+
+	@Override
+	public PriceStreamProviderStatus currentStatus() {
+		return new PriceStreamProviderStatus(
+			PROVIDER_NAME,
+			started.get(),
+			client.isConnected(),
+			reconnectScheduled.get(),
+			reconnectAttempts.get(),
+			lastReconnectReason,
+			toInstant(lastReconnectAtMs.get()),
+			lastErrorType,
+			lastErrorMessage,
+			toInstant(lastErrorAtMs.get()),
+			lastResubscribeCount.get(),
+			toInstant(lastResubscribeAtMs.get()),
+			lastQueries.size()
+		);
+	}
+
+	private Instant toInstant(long epochMs) {
+		if (epochMs <= 0L) {
+			return null;
+		}
+		return Instant.ofEpochMilli(epochMs);
+	}
+
+	private int computeReconnectDelaySec(int attempt) {
+		if (attempt <= 1) {
+			return RECONNECT_BASE_DELAY_SEC;
+		}
+		long delay = (long) RECONNECT_BASE_DELAY_SEC << Math.min(attempt - 1, 8);
+		return (int) Math.min(delay, RECONNECT_MAX_DELAY_SEC);
+	}
+
+	private List<String> collectInstIds(List<PriceQuery> queries) {
+		List<String> instIds = new ArrayList<>();
+		if (queries == null || queries.isEmpty()) {
+			return instIds;
+		}
+		for (PriceQuery query : queries) {
+			String instId = buildInstId(query);
+			if (instId != null && !instIds.contains(instId)) {
+				instIds.add(instId);
+			}
+		}
+		return instIds;
 	}
 }
