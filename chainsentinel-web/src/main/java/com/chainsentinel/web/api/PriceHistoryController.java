@@ -13,6 +13,8 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/prices/history")
 public class PriceHistoryController {
 
+	private static final String DEFAULT_PROVIDER = "okx_ws";
+
 	private final PriceTickQueryService priceTickQueryService;
 
 	public PriceHistoryController(PriceTickQueryService priceTickQueryService) {
@@ -33,7 +35,7 @@ public class PriceHistoryController {
 		if (fromTs != null && toTs != null && fromTs > toTs) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "from must be less than or equal to to");
 		}
-		return priceTickQueryService.query(provider, instId, fromTs, toTs, limit);
+		return priceTickQueryService.query(resolveProvider(provider), instId, fromTs, toTs, limit);
 	}
 
 	@GetMapping("/aggregate")
@@ -54,6 +56,13 @@ public class PriceHistoryController {
 		if (fromTs != null && toTs != null && fromTs > toTs) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "from must be less than or equal to to");
 		}
-		return priceTickQueryService.aggregate(provider, instId, fromTs, toTs, bucketMs, limit);
+		return priceTickQueryService.aggregate(resolveProvider(provider), instId, fromTs, toTs, bucketMs, limit);
+	}
+
+	private String resolveProvider(String provider) {
+		if (provider == null || provider.isBlank()) {
+			return DEFAULT_PROVIDER;
+		}
+		return provider;
 	}
 }

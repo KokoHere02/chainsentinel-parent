@@ -64,6 +64,22 @@ class PriceHistoryControllerTest {
 	}
 
 	@Test
+	void shouldUseDefaultProviderWhenProviderMissing() throws Exception {
+		when(priceTickQueryService.aggregate(eq("okx_ws"), eq("BTC-USDT"), eq(1700000000000L), eq(1700003600000L), eq(60000L), eq(1000)))
+			.thenReturn(List.of());
+
+		mockMvc.perform(get("/api/prices/history/aggregate")
+				.param("instId", "BTC-USDT")
+				.param("from", "1700000000000")
+				.param("to", "1700003600000")
+				.param("bucketMs", "60000")
+				.param("limit", "1000"))
+			.andExpect(status().isOk());
+
+		verify(priceTickQueryService).aggregate("okx_ws", "BTC-USDT", 1700000000000L, 1700003600000L, 60000L, 1000);
+	}
+
+	@Test
 	void shouldReturnBadRequestWhenHistoryRangeInvalid() throws Exception {
 		mockMvc.perform(get("/api/prices/history")
 				.param("instId", "BTC-USDT")
