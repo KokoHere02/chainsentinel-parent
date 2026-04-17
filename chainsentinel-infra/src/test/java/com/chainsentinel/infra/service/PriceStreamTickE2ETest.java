@@ -26,6 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class PriceStreamTickE2ETest {
@@ -58,7 +59,9 @@ class PriceStreamTickE2ETest {
 			1700000000000L
 		);
 		PriceStreamProvider provider = new OneShotProvider(emittedQuote);
-		new PriceStreamManager(List.of(provider), cache, batchWriter);
+		ApplicationEventPublisher eventPublisher = event -> {
+		};
+		new PriceStreamManager(List.of(provider), cache, batchWriter, eventPublisher);
 
 		PriceQuery query = new PriceQuery("OFFCHAIN", PriceInstType.SPOT, "BTC", "USDT", null);
 		PriceQuote quote = cache.get(query).orElseThrow();
@@ -113,4 +116,3 @@ class PriceStreamTickE2ETest {
 		}
 	}
 }
-

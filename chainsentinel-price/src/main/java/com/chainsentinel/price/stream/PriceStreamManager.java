@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -17,11 +18,18 @@ public class PriceStreamManager {
 	private final List<PriceStreamProvider> providers;
 	private final PriceCache priceCache;
 	private final PriceTickBatchWriter priceTickBatchWriter;
+	private final ApplicationEventPublisher eventPublisher;
 
-	public PriceStreamManager(List<PriceStreamProvider> providers, PriceCache priceCache, PriceTickBatchWriter priceTickBatchWriter) {
+	public PriceStreamManager(
+		List<PriceStreamProvider> providers,
+		PriceCache priceCache,
+		PriceTickBatchWriter priceTickBatchWriter,
+		ApplicationEventPublisher eventPublisher
+	) {
 		this.providers = providers;
 		this.priceCache = priceCache;
 		this.priceTickBatchWriter = priceTickBatchWriter;
+		this.eventPublisher = eventPublisher;
 		startEnabledProviders();
 	}
 
@@ -87,6 +95,7 @@ public class PriceStreamManager {
 			log.warn("price.ws.tick.enqueue.failed provider={} instId={} error={}",
 				quote.providerName(), quote.instId(), ex.getMessage());
 		}
+		eventPublisher.publishEvent(new PriceStreamQuoteEvent(quote));
 		log.debug("price.ws.quote provider={} instId={} price={}", quote.providerName(), quote.instId(), quote.price());
 	}
 }
