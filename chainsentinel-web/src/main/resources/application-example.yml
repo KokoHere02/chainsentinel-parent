@@ -63,6 +63,13 @@ chainsentinel:
       max-rounds: 1000
       # Sleep between rounds in milliseconds
       sleep-ms: 50
+    ws:
+      okx:
+        guard:
+          # Drop quote if jump exceeds ratio inside short window
+          max-jump-ratio: 0.2
+          # Short window in ms for jump detection
+          short-window-ms: 2000
 
 logging:
   level:

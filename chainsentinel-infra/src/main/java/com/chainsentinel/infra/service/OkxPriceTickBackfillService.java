@@ -7,7 +7,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -21,7 +22,7 @@ public class OkxPriceTickBackfillService {
 
 	private final OkxApiClient okxApiClient;
 	private final PriceTickPersistenceService priceTickPersistenceService;
-	private final AtomicBoolean running = new AtomicBoolean(false);
+	private final Set<String> runningInstIds = ConcurrentHashMap.newKeySet();
 
 	public OkxPriceTickBackfillService(
 		OkxApiClient okxApiClient,
@@ -40,18 +41,18 @@ public class OkxPriceTickBackfillService {
 		int maxRounds,
 		long sleepMs
 	) {
-		if (!running.compareAndSet(false, true)) {
-			throw new IllegalStateException("backfill already running");
+		NormalizedRequest request = buildRequest(instId, fromTs, toTs, bar, pageLimit, maxRounds, sleepMs);
+		if (!tryAcquireRunning(request.normalizedInstId())) {
+			throw new IllegalStateException("backfill already running for instId=" + request.normalizedInstId());
 		}
 		long startedAtMs = System.currentTimeMillis();
 		try {
-			NormalizedRequest request = buildRequest(instId, fromTs, toTs, bar, pageLimit, maxRounds, sleepMs);
 			BackfillState state = BackfillState.startWith(request.toTs());
 			runRounds(request, state);
 			finalizeStopReason(state);
 			return toResult(request, startedAtMs, state);
 		} finally {
-			running.set(false);
+			releaseRunning(request.normalizedInstId());
 		}
 	}
 
@@ -247,6 +248,14 @@ public class OkxPriceTickBackfillService {
 			Instant.ofEpochMilli(startedAtMs),
 			Instant.now()
 		);
+	}
+
+	private boolean tryAcquireRunning(String instId) {
+		return runningInstIds.add(instId);
+	}
+
+	private void releaseRunning(String instId) {
+		runningInstIds.remove(instId);
 	}
 
 	private String normalizeInstId(String instId) {

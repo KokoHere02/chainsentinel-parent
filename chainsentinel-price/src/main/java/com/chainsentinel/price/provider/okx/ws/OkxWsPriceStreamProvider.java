@@ -49,8 +49,8 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	private static final String METRIC_WS_KEEPALIVE_TOTAL = "price_ws_keepalive_total";
 	private static final String METRIC_WS_FIRST_QUOTE_TIMEOUT_TOTAL = "price_ws_first_quote_timeout_total";
 	private static final String METRIC_WS_QUOTE_DROPPED_TOTAL = "price_ws_quote_dropped_total";
-	private static final long QUOTE_SHORT_WINDOW_MS = 2000L;
-	private static final double QUOTE_MAX_JUMP_RATIO = 0.20D;
+	private static final long DEFAULT_QUOTE_SHORT_WINDOW_MS = 2000L;
+	private static final double DEFAULT_QUOTE_MAX_JUMP_RATIO = 0.20D;
 	private static final int QUOTE_JUMP_RATIO_SCALE = 8;
 	private static final BigDecimal DECIMAL_ZERO = BigDecimal.ZERO;
 	private static final long FIRST_QUOTE_TIMEOUT_MS = 30000L;
@@ -61,6 +61,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	private final OkxWsMessageParser messageParser;
 	private final SimpleWebSocketClient client;
 	private final MeterRegistry meterRegistry;
+	private final OkxWsQuoteGuardProperties quoteGuardProperties;
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final AtomicBoolean started = new AtomicBoolean(false);
 	private final AtomicLong lastMessageAt = new AtomicLong(0L);
@@ -88,11 +89,13 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	public OkxWsPriceStreamProvider(
 		PriceProviderRuntimeConfig runtimeConfig,
 		OkxWsMessageParser messageParser,
-		MeterRegistry meterRegistry
+		MeterRegistry meterRegistry,
+		OkxWsQuoteGuardProperties quoteGuardProperties
 	) {
 		this.runtimeConfig = runtimeConfig;
 		this.messageParser = messageParser;
 		this.meterRegistry = meterRegistry;
+		this.quoteGuardProperties = quoteGuardProperties;
 		this.client = new SimpleWebSocketClient(Duration.ofSeconds(10));
 	}
 
@@ -417,6 +420,18 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 		meterRegistry.counter(METRIC_WS_RECONNECT_TOTAL, "provider", PROVIDER_NAME, "reason", reason).increment();
 	}
 
+	
+	private long resolveQuoteShortWindowMs() {
+		return quoteGuardProperties.getShortWindowMs() > 0L
+			? quoteGuardProperties.getShortWindowMs()
+			: DEFAULT_QUOTE_SHORT_WINDOW_MS;
+	}
+
+	private double resolveQuoteMaxJumpRatio() {
+		return quoteGuardProperties.getMaxJumpRatio() > 0D
+			? quoteGuardProperties.getMaxJumpRatio()
+			: DEFAULT_QUOTE_MAX_JUMP_RATIO;
+	}
 	private void incrementKeepaliveCounter(String action) {
 		meterRegistry.counter(METRIC_WS_KEEPALIVE_TOTAL, "provider", PROVIDER_NAME, "action", action).increment();
 	}
@@ -447,13 +462,13 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 		}
 		if (previousTs != null && previousPrice != null && previousPrice.compareTo(DECIMAL_ZERO) > 0) {
 			long deltaTs = quote.ts() - previousTs;
-			if (deltaTs >= 0 && deltaTs <= QUOTE_SHORT_WINDOW_MS) {
+			if (deltaTs >= 0 && deltaTs <= resolveQuoteShortWindowMs()) {
 				double jumpRatio = quote.price()
 					.subtract(previousPrice)
 					.abs()
 					.divide(previousPrice, QUOTE_JUMP_RATIO_SCALE, RoundingMode.HALF_UP)
 					.doubleValue();
-				if (jumpRatio >= QUOTE_MAX_JUMP_RATIO) {
+				if (jumpRatio >= resolveQuoteMaxJumpRatio()) {
 					recordQuoteDrop("suspicious_jump", quote, previousTs, previousPrice);
 					return false;
 				}
