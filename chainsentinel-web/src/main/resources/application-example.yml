@@ -50,8 +50,20 @@ chainsentinel:
       enabled: true
       retention-days: 30
       cleanup-interval-ms: 86400000
+    tick-backfill:
+      # Run once per day (default 03:00 Asia/Shanghai)
+      daily-cron: 0 0 3 * * *
+      # Default lookback window in days
+      retention-days: 30
+      # OKX candle bar value
+      bar: 1m
+      # Page size per round
+      page-limit: 300
+      # Max rounds per run
+      max-rounds: 1000
+      # Sleep between rounds in milliseconds
+      sleep-ms: 50
 
 logging:
   level:
     com.chainsentinel: INFO
-

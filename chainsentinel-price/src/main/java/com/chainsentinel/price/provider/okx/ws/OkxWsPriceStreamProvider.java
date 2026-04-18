@@ -12,6 +12,7 @@ import com.chainsentinel.price.stream.ws.SimpleWebSocketClient;
 import com.chainsentinel.price.stream.ws.WebSocketMessageHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -44,6 +45,9 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	private static final String METRIC_WS_RECONNECT_TOTAL = "price_ws_reconnect_total";
 	private static final String METRIC_WS_KEEPALIVE_TOTAL = "price_ws_keepalive_total";
 	private static final String METRIC_WS_FIRST_QUOTE_TIMEOUT_TOTAL = "price_ws_first_quote_timeout_total";
+	private static final String METRIC_WS_QUOTE_DROPPED_TOTAL = "price_ws_quote_dropped_total";
+	private static final long QUOTE_SHORT_WINDOW_MS = 2000L;
+	private static final double QUOTE_MAX_JUMP_RATIO = 0.20D;
 	private static final long FIRST_QUOTE_TIMEOUT_MS = 30000L;
 	private static final int RECONNECT_BASE_DELAY_SEC = 3;
 	private static final int RECONNECT_MAX_DELAY_SEC = 30;
@@ -69,6 +73,8 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	private final AtomicBoolean stopping = new AtomicBoolean(false);
 	private final List<PriceQuery> lastQueries = new CopyOnWriteArrayList<>();
 	private final Map<String, Long> pendingFirstQuoteAt = new ConcurrentHashMap<>();
+	private final Map<String, Long> lastQuoteTsByInst = new ConcurrentHashMap<>();
+	private final Map<String, BigDecimal> lastPriceByInst = new ConcurrentHashMap<>();
 	private volatile ScheduledExecutorService keepaliveExecutor;
 	private volatile ScheduledExecutorService reconnectExecutor;
 	private volatile String wsUrl;
@@ -160,6 +166,10 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 					incrementMessageCounter("non_quote");
 				}
 				quote.ifPresent(q -> {
+					if (!acceptQuote(q)) {
+						incrementMessageCounter("quote_dropped");
+						return;
+					}
 					incrementMessageCounter("quote");
 					markFirstQuoteReceived(q.instId(), q.ts());
 					PriceStreamSink target = OkxWsPriceStreamProvider.this.sink;
@@ -404,6 +414,65 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 
 	private void incrementKeepaliveCounter(String action) {
 		meterRegistry.counter(METRIC_WS_KEEPALIVE_TOTAL, "provider", PROVIDER_NAME, "action", action).increment();
+	}
+
+	private boolean acceptQuote(PriceStreamQuote quote) {
+		if (quote == null || quote.price() == null || quote.ts() <= 0L) {
+			recordQuoteDrop("invalid_payload", quote, null, null);
+			return false;
+		}
+		if (quote.price().compareTo(BigDecimal.ZERO) <= 0) {
+			recordQuoteDrop("invalid_price", quote, null, null);
+			return false;
+		}
+		String instId = quote.instId();
+		if (instId == null || instId.isBlank()) {
+			recordQuoteDrop("invalid_inst", quote, null, null);
+			return false;
+		}
+		Long previousTs = lastQuoteTsByInst.get(instId);
+		BigDecimal previousPrice = lastPriceByInst.get(instId);
+		if (previousTs != null && quote.ts() < previousTs) {
+			recordQuoteDrop("ts_rollback", quote, previousTs, previousPrice);
+			return false;
+		}
+		if (previousTs != null && quote.ts() == previousTs) {
+			recordQuoteDrop("ts_duplicate", quote, previousTs, previousPrice);
+			return false;
+		}
+		if (previousTs != null && previousPrice != null && previousPrice.compareTo(BigDecimal.ZERO) > 0) {
+			long deltaTs = quote.ts() - previousTs;
+			if (deltaTs >= 0 && deltaTs <= QUOTE_SHORT_WINDOW_MS) {
+				double jumpRatio = quote.price()
+					.subtract(previousPrice)
+					.abs()
+					.divide(previousPrice, 8, java.math.RoundingMode.HALF_UP)
+					.doubleValue();
+				if (jumpRatio >= QUOTE_MAX_JUMP_RATIO) {
+					recordQuoteDrop("suspicious_jump", quote, previousTs, previousPrice);
+					return false;
+				}
+			}
+		}
+		lastQuoteTsByInst.put(instId, quote.ts());
+		lastPriceByInst.put(instId, quote.price());
+		return true;
+	}
+
+	private void recordQuoteDrop(String reason, PriceStreamQuote quote, Long previousTs, BigDecimal previousPrice) {
+		String instId = quote == null ? "" : quote.instId();
+		BigDecimal currentPrice = quote == null ? null : quote.price();
+		Long currentTs = quote == null ? null : quote.ts();
+		log.warn(
+			"price.ws.okx.quote.drop reason={} instId={} prevTs={} prevPrice={} currentTs={} currentPrice={}",
+			reason,
+			instId,
+			previousTs,
+			previousPrice,
+			currentTs,
+			currentPrice
+		);
+		meterRegistry.counter(METRIC_WS_QUOTE_DROPPED_TOTAL, "provider", PROVIDER_NAME, "reason", reason).increment();
 	}
 
 	private boolean handleControlEventMessage(String text) {

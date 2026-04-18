@@ -1,5 +1,7 @@
 package com.chainsentinel.infra.service;
 
+import com.chainsentinel.infra.config.PriceTickBackfillProperties;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
@@ -21,50 +23,121 @@ public class PriceTickBackfillDispatchService {
 	private static final int DEFAULT_PAGE_LIMIT = 300;
 	private static final int DEFAULT_MAX_ROUNDS = 1000;
 	private static final long DEFAULT_SLEEP_MS = 50L;
+	private static final String METRIC_BACKFILL_DISPATCH_TOTAL = "price_tick_backfill_dispatch_total";
+	private static final String METRIC_BACKFILL_DURATION = "price_tick_backfill_duration";
 
 	private final OkxPriceTickBackfillService okxPriceTickBackfillService;
 	private final Executor backfillExecutor;
+	private final MeterRegistry meterRegistry;
+	private final PriceTickBackfillProperties backfillProperties;
 	private final Set<String> pendingInstIds = ConcurrentHashMap.newKeySet();
 
 	public PriceTickBackfillDispatchService(
 		OkxPriceTickBackfillService okxPriceTickBackfillService,
-		@Qualifier("priceTickBackfillExecutor") Executor backfillExecutor
+		@Qualifier("priceTickBackfillExecutor") Executor backfillExecutor,
+		MeterRegistry meterRegistry,
+		PriceTickBackfillProperties backfillProperties
 	) {
 		this.okxPriceTickBackfillService = okxPriceTickBackfillService;
 		this.backfillExecutor = backfillExecutor;
+		this.meterRegistry = meterRegistry;
+		this.backfillProperties = backfillProperties;
 	}
 
 	public void submitLast30Days(String instId, String trigger) {
 		String normalizedInstId = normalizeInstId(instId);
+		String normalizedTrigger = normalizeTrigger(trigger);
 		if (normalizedInstId == null) {
+			incrementDispatchCounter(normalizedTrigger, "skipped_invalid_inst");
 			return;
 		}
 		if (!pendingInstIds.add(normalizedInstId)) {
-			log.info("price.tick.backfill.skip reason=pending instId={} trigger={}", normalizedInstId, trigger);
+			log.info("price.tick.backfill.skip reason=pending instId={} trigger={}", normalizedInstId, normalizedTrigger);
+			incrementDispatchCounter(normalizedTrigger, "skipped_pending");
 			return;
 		}
-		backfillExecutor.execute(() -> {
-			try {
-				long toTs = System.currentTimeMillis();
-				long fromTs = Instant.ofEpochMilli(toTs)
-					.minus(DEFAULT_RETENTION_DAYS, ChronoUnit.DAYS)
-					.toEpochMilli();
-				log.info("price.tick.backfill.enqueue instId={} trigger={} from={} to={}", normalizedInstId, trigger, fromTs, toTs);
-				okxPriceTickBackfillService.backfill(
-					normalizedInstId,
-					fromTs,
-					toTs,
-					DEFAULT_BAR,
-					DEFAULT_PAGE_LIMIT,
-					DEFAULT_MAX_ROUNDS,
-					DEFAULT_SLEEP_MS
-				);
-			} catch (Exception ex) {
-				log.warn("price.tick.backfill.async.failed instId={} trigger={} error={}", normalizedInstId, trigger, ex.getMessage());
-			} finally {
-				pendingInstIds.remove(normalizedInstId);
-			}
-		});
+		try {
+			incrementDispatchCounter(normalizedTrigger, "submitted");
+			backfillExecutor.execute(() -> doBackfill(normalizedInstId, normalizedTrigger));
+		} catch (Exception ex) {
+			pendingInstIds.remove(normalizedInstId);
+			incrementDispatchCounter(normalizedTrigger, "submit_failed");
+			log.warn("price.tick.backfill.submit.failed instId={} trigger={} error={}", normalizedInstId, normalizedTrigger, ex.getMessage());
+		}
+	}
+
+	private void doBackfill(String instId, String trigger) {
+		long startedMs = System.currentTimeMillis();
+		try {
+			int retentionDays = resolveRetentionDays();
+			String bar = resolveBar();
+			int pageLimit = resolvePageLimit();
+			int maxRounds = resolveMaxRounds();
+			long sleepMs = resolveSleepMs();
+
+			long toTs = startedMs;
+			long fromTs = Instant.ofEpochMilli(toTs)
+				.minus(retentionDays, ChronoUnit.DAYS)
+				.toEpochMilli();
+			log.info(
+				"price.tick.backfill.enqueue instId={} trigger={} from={} to={} days={} bar={} pageLimit={} maxRounds={} sleepMs={}",
+				instId,
+				trigger,
+				fromTs,
+				toTs,
+				retentionDays,
+				bar,
+				pageLimit,
+				maxRounds,
+				sleepMs
+			);
+			okxPriceTickBackfillService.backfill(
+				instId,
+				fromTs,
+				toTs,
+				bar,
+				pageLimit,
+				maxRounds,
+				sleepMs
+			);
+			incrementDispatchCounter(trigger, "success");
+			recordBackfillDuration(trigger, "success", startedMs);
+		} catch (Exception ex) {
+			incrementDispatchCounter(trigger, "failed");
+			recordBackfillDuration(trigger, "failed", startedMs);
+			log.warn("price.tick.backfill.async.failed instId={} trigger={} error={}", instId, trigger, ex.getMessage());
+		} finally {
+			pendingInstIds.remove(instId);
+		}
+	}
+
+	private int resolveRetentionDays() {
+		return backfillProperties.getRetentionDays() > 0 ? backfillProperties.getRetentionDays() : DEFAULT_RETENTION_DAYS;
+	}
+
+	private String resolveBar() {
+		return StringUtils.hasText(backfillProperties.getBar()) ? backfillProperties.getBar().trim() : DEFAULT_BAR;
+	}
+
+	private int resolvePageLimit() {
+		return backfillProperties.getPageLimit() > 0 ? backfillProperties.getPageLimit() : DEFAULT_PAGE_LIMIT;
+	}
+
+	private int resolveMaxRounds() {
+		return backfillProperties.getMaxRounds() > 0 ? backfillProperties.getMaxRounds() : DEFAULT_MAX_ROUNDS;
+	}
+
+	private long resolveSleepMs() {
+		return backfillProperties.getSleepMs() >= 0L ? backfillProperties.getSleepMs() : DEFAULT_SLEEP_MS;
+	}
+
+	private void incrementDispatchCounter(String trigger, String status) {
+		meterRegistry.counter(METRIC_BACKFILL_DISPATCH_TOTAL, "trigger", trigger, "status", status).increment();
+	}
+
+	private void recordBackfillDuration(String trigger, String status, long startedMs) {
+		long durationMs = Math.max(0L, System.currentTimeMillis() - startedMs);
+		meterRegistry.timer(METRIC_BACKFILL_DURATION, "trigger", trigger, "status", status).record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
 	}
 
 	private String normalizeInstId(String instId) {
@@ -72,5 +145,12 @@ public class PriceTickBackfillDispatchService {
 			return null;
 		}
 		return instId.trim().toUpperCase(Locale.ROOT);
+	}
+
+	private String normalizeTrigger(String trigger) {
+		if (!StringUtils.hasText(trigger)) {
+			return "unknown";
+		}
+		return trigger.trim().toLowerCase(Locale.ROOT);
 	}
 }
