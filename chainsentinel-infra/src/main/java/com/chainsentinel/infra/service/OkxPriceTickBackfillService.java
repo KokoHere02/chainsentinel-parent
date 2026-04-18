@@ -1,7 +1,6 @@
 package com.chainsentinel.infra.service;
 
 import com.chainsentinel.infra.entity.PriceTickEntity;
-import com.chainsentinel.infra.repository.PriceTickRepository;
 import com.chainsentinel.price.provider.okx.OkxApiClient;
 import com.chainsentinel.price.provider.okx.dto.OkxHistoryCandle;
 import java.time.Instant;
@@ -11,9 +10,7 @@ import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OkxPriceTickBackfillService {
@@ -23,12 +20,15 @@ public class OkxPriceTickBackfillService {
 	private static final String INST_TYPE = "SPOT";
 
 	private final OkxApiClient okxApiClient;
-	private final PriceTickRepository priceTickRepository;
+	private final PriceTickPersistenceService priceTickPersistenceService;
 	private final AtomicBoolean running = new AtomicBoolean(false);
 
-	public OkxPriceTickBackfillService(OkxApiClient okxApiClient, PriceTickRepository priceTickRepository) {
+	public OkxPriceTickBackfillService(
+		OkxApiClient okxApiClient,
+		PriceTickPersistenceService priceTickPersistenceService
+	) {
 		this.okxApiClient = okxApiClient;
-		this.priceTickRepository = priceTickRepository;
+		this.priceTickPersistenceService = priceTickPersistenceService;
 	}
 
 	public BackfillResult backfill(
@@ -43,154 +43,210 @@ public class OkxPriceTickBackfillService {
 		if (!running.compareAndSet(false, true)) {
 			throw new IllegalStateException("backfill already running");
 		}
-		long start = System.currentTimeMillis();
-		int totalFetched = 0;
-		int totalInserted = 0;
-		int rounds = 0;
-		boolean reachedFrom = false;
-		String stopReason = "unknown";
-		Long lastOldestTs = null;
-		Long lastNewestTs = null;
-		Long nextCursorAfter = null;
+		long startedAtMs = System.currentTimeMillis();
 		try {
-			String normalizedInstId = normalizeInstId(instId);
-			if (normalizedInstId == null) {
-				throw new IllegalArgumentException("instId is required");
-			}
-			if (fromTs <= 0 || toTs <= 0 || fromTs > toTs) {
-				throw new IllegalArgumentException("invalid from/to range");
-			}
-			String[] parts = parseInstId(normalizedInstId);
-			Long cursorAfter = toTs;
-			long lastOldestTsGuard = Long.MAX_VALUE;
-			nextCursorAfter = cursorAfter;
-
-			for (int i = 0; i < maxRounds; i++) {
-				rounds++;
-				List<OkxHistoryCandle> candles = okxApiClient.fetchHistoryCandles(normalizedInstId, bar, cursorAfter, pageLimit);
-				if (candles.isEmpty()) {
-					stopReason = "empty_batch";
-					break;
-				}
-				totalFetched += candles.size();
-
-				List<PriceTickEntity> entities = new ArrayList<>();
-				long oldestTs = Long.MAX_VALUE;
-				long newestTs = Long.MIN_VALUE;
-				for (OkxHistoryCandle candle : candles) {
-					if (candle == null || candle.ts() <= 0 || candle.closePrice() == null) {
-						continue;
-					}
-					if (candle.ts() < oldestTs) {
-						oldestTs = candle.ts();
-					}
-					if (candle.ts() > newestTs) {
-						newestTs = candle.ts();
-					}
-					if (candle.ts() < fromTs || candle.ts() > toTs) {
-						continue;
-					}
-					PriceTickEntity entity = new PriceTickEntity();
-					entity.setProviderName(PROVIDER_NAME);
-					entity.setInstType(INST_TYPE);
-					entity.setInstId(normalizedInstId);
-					entity.setBaseSymbol(parts[0]);
-					entity.setQuoteSymbol(parts[1]);
-					entity.setPrice(candle.closePrice());
-					entity.setQuoteTs(candle.ts());
-					entities.add(entity);
-				}
-
-				int insertedThisRound = saveIgnoreDuplicate(entities);
-				totalInserted += insertedThisRound;
-				lastOldestTs = oldestTs == Long.MAX_VALUE ? null : oldestTs;
-				lastNewestTs = newestTs == Long.MIN_VALUE ? null : newestTs;
-
-				log.info(
-					"price.tick.backfill.okx.round instId={} round={}/{} cursorAfter={} fetched={} inRange={} inserted={} oldestTs={} newestTs={}",
-					normalizedInstId,
-					rounds,
-					maxRounds,
-					cursorAfter,
-					candles.size(),
-					entities.size(),
-					insertedThisRound,
-					lastOldestTs,
-					lastNewestTs
-				);
-
-				if (oldestTs == Long.MAX_VALUE) {
-					stopReason = "all_rows_invalid";
-					break;
-				}
-				if (oldestTs <= fromTs) {
-					reachedFrom = true;
-					stopReason = "reached_from";
-					break;
-				}
-				if (oldestTs >= lastOldestTsGuard) {
-					stopReason = "cursor_stuck";
-					break;
-				}
-
-				lastOldestTsGuard = oldestTs;
-				cursorAfter = Math.max(1L, oldestTs - 1L);
-				nextCursorAfter = cursorAfter;
-				if (sleepMs > 0) {
-					try {
-						Thread.sleep(sleepMs);
-					} catch (InterruptedException ignored) {
-						Thread.currentThread().interrupt();
-						stopReason = "interrupted";
-						break;
-					}
-				}
-			}
-
-			if ("unknown".equals(stopReason)) {
-				stopReason = "max_rounds_reached";
-			}
-
-			long durationMs = System.currentTimeMillis() - start;
-			log.info("price.tick.backfill.okx.done instId={} from={} to={} bar={} rounds={} fetched={} inserted={} reachedFrom={} stopReason={} lastOldestTs={} lastNewestTs={} nextCursorAfter={} durationMs={}",
-				normalizedInstId, fromTs, toTs, bar, rounds, totalFetched, totalInserted, reachedFrom, stopReason,
-				lastOldestTs, lastNewestTs, nextCursorAfter, durationMs);
-			return new BackfillResult(
-				normalizedInstId,
-				fromTs,
-				toTs,
-				bar,
-				rounds,
-				totalFetched,
-				totalInserted,
-				reachedFrom,
-				stopReason,
-				lastOldestTs,
-				lastNewestTs,
-				nextCursorAfter,
-				Instant.ofEpochMilli(start),
-				Instant.now()
-			);
+			NormalizedRequest request = buildRequest(instId, fromTs, toTs, bar, pageLimit, maxRounds, sleepMs);
+			BackfillState state = BackfillState.startWith(request.toTs());
+			runRounds(request, state);
+			finalizeStopReason(state);
+			return toResult(request, startedAtMs, state);
 		} finally {
 			running.set(false);
 		}
 	}
 
-	@Transactional
-	protected int saveIgnoreDuplicate(List<PriceTickEntity> entities) {
-		if (entities == null || entities.isEmpty()) {
-			return 0;
+	private NormalizedRequest buildRequest(
+		String instId,
+		long fromTs,
+		long toTs,
+		String bar,
+		int pageLimit,
+		int maxRounds,
+		long sleepMs
+	) {
+		String normalizedInstId = normalizeInstId(instId);
+		if (normalizedInstId == null) {
+			throw new IllegalArgumentException("instId is required");
 		}
-		int inserted = 0;
-		for (PriceTickEntity entity : entities) {
-			try {
-				priceTickRepository.save(entity);
-				inserted++;
-			} catch (DataIntegrityViolationException ignore) {
-				// duplicate quoteTs for same provider+inst
+		if (fromTs <= 0 || toTs <= 0 || fromTs > toTs) {
+			throw new IllegalArgumentException("invalid from/to range");
+		}
+		return new NormalizedRequest(
+			normalizedInstId,
+			fromTs,
+			toTs,
+			bar,
+			pageLimit,
+			maxRounds,
+			sleepMs,
+			parseInstId(normalizedInstId)
+		);
+	}
+
+	private void runRounds(NormalizedRequest request, BackfillState state) {
+		for (int i = 0; i < request.maxRounds(); i++) {
+			if (!processSingleRound(request, state)) {
+				return;
 			}
 		}
-		return inserted;
+	}
+
+	private boolean processSingleRound(NormalizedRequest request, BackfillState state) {
+		state.rounds++;
+		List<OkxHistoryCandle> candles = okxApiClient.fetchHistoryCandles(
+			request.normalizedInstId(),
+			request.bar(),
+			state.cursorAfter,
+			request.pageLimit()
+		);
+		if (candles.isEmpty()) {
+			state.stopReason = "empty_batch";
+			return false;
+		}
+		state.totalFetched += candles.size();
+
+		RoundPreparedData prepared = prepareRoundData(request, candles);
+		int insertedThisRound = priceTickPersistenceService.saveIgnoreDuplicate(prepared.entities());
+		state.totalInserted += insertedThisRound;
+		state.lastOldestTs = prepared.oldestTs() == Long.MAX_VALUE ? null : prepared.oldestTs();
+		state.lastNewestTs = prepared.newestTs() == Long.MIN_VALUE ? null : prepared.newestTs();
+
+		logRound(request, state, candles.size(), prepared.entities().size(), insertedThisRound);
+		if (shouldStopAfterRound(request, state, prepared.oldestTs())) {
+			return false;
+		}
+		advanceCursor(state, prepared.oldestTs());
+		return !sleepInterrupted(request.sleepMs(), state);
+	}
+
+	private RoundPreparedData prepareRoundData(NormalizedRequest request, List<OkxHistoryCandle> candles) {
+		List<PriceTickEntity> entities = new ArrayList<>();
+		long oldestTs = Long.MAX_VALUE;
+		long newestTs = Long.MIN_VALUE;
+		for (OkxHistoryCandle candle : candles) {
+			if (candle == null || candle.ts() <= 0 || candle.closePrice() == null) {
+				continue;
+			}
+			oldestTs = Math.min(oldestTs, candle.ts());
+			newestTs = Math.max(newestTs, candle.ts());
+			if (candle.ts() < request.fromTs() || candle.ts() > request.toTs()) {
+				continue;
+			}
+			entities.add(toPriceTickEntity(request, candle));
+		}
+		return new RoundPreparedData(entities, oldestTs, newestTs);
+	}
+
+	private PriceTickEntity toPriceTickEntity(NormalizedRequest request, OkxHistoryCandle candle) {
+		PriceTickEntity entity = new PriceTickEntity();
+		entity.setProviderName(PROVIDER_NAME);
+		entity.setInstType(INST_TYPE);
+		entity.setInstId(request.normalizedInstId());
+		entity.setBaseSymbol(request.parts()[0]);
+		entity.setQuoteSymbol(request.parts()[1]);
+		entity.setPrice(candle.closePrice());
+		entity.setQuoteTs(candle.ts());
+		return entity;
+	}
+
+	private void logRound(
+		NormalizedRequest request,
+		BackfillState state,
+		int fetched,
+		int inRange,
+		int insertedThisRound
+	) {
+		log.info(
+			"price.tick.backfill.okx.round instId={} round={}/{} cursorAfter={} fetched={} inRange={} inserted={} oldestTs={} newestTs={}",
+			request.normalizedInstId(),
+			state.rounds,
+			request.maxRounds(),
+			state.cursorAfter,
+			fetched,
+			inRange,
+			insertedThisRound,
+			state.lastOldestTs,
+			state.lastNewestTs
+		);
+	}
+
+	private boolean shouldStopAfterRound(NormalizedRequest request, BackfillState state, long oldestTs) {
+		if (oldestTs == Long.MAX_VALUE) {
+			state.stopReason = "all_rows_invalid";
+			return true;
+		}
+		if (oldestTs <= request.fromTs()) {
+			state.reachedFrom = true;
+			state.stopReason = "reached_from";
+			return true;
+		}
+		if (oldestTs >= state.lastOldestTsGuard) {
+			state.stopReason = "cursor_stuck";
+			return true;
+		}
+		return false;
+	}
+
+	private void advanceCursor(BackfillState state, long oldestTs) {
+		state.lastOldestTsGuard = oldestTs;
+		state.cursorAfter = Math.max(1L, oldestTs - 1L);
+		state.nextCursorAfter = state.cursorAfter;
+	}
+
+	private boolean sleepInterrupted(long sleepMs, BackfillState state) {
+		if (sleepMs <= 0) {
+			return false;
+		}
+		try {
+			Thread.sleep(sleepMs);
+			return false;
+		} catch (InterruptedException ignored) {
+			Thread.currentThread().interrupt();
+			state.stopReason = "interrupted";
+			return true;
+		}
+	}
+
+	private void finalizeStopReason(BackfillState state) {
+		if ("unknown".equals(state.stopReason)) {
+			state.stopReason = "max_rounds_reached";
+		}
+	}
+
+	private BackfillResult toResult(NormalizedRequest request, long startedAtMs, BackfillState state) {
+		long durationMs = System.currentTimeMillis() - startedAtMs;
+		log.info(
+			"price.tick.backfill.okx.done instId={} from={} to={} bar={} rounds={} fetched={} inserted={} reachedFrom={} stopReason={} lastOldestTs={} lastNewestTs={} nextCursorAfter={} durationMs={}",
+			request.normalizedInstId(),
+			request.fromTs(),
+			request.toTs(),
+			request.bar(),
+			state.rounds,
+			state.totalFetched,
+			state.totalInserted,
+			state.reachedFrom,
+			state.stopReason,
+			state.lastOldestTs,
+			state.lastNewestTs,
+			state.nextCursorAfter,
+			durationMs
+		);
+		return new BackfillResult(
+			request.normalizedInstId(),
+			request.fromTs(),
+			request.toTs(),
+			request.bar(),
+			state.rounds,
+			state.totalFetched,
+			state.totalInserted,
+			state.reachedFrom,
+			state.stopReason,
+			state.lastOldestTs,
+			state.lastNewestTs,
+			state.nextCursorAfter,
+			Instant.ofEpochMilli(startedAtMs),
+			Instant.now()
+		);
 	}
 
 	private String normalizeInstId(String instId) {
@@ -206,6 +262,45 @@ public class OkxPriceTickBackfillService {
 			return new String[] {instId, "USDT"};
 		}
 		return new String[] {parts[0], parts[1]};
+	}
+
+	private record NormalizedRequest(
+		String normalizedInstId,
+		long fromTs,
+		long toTs,
+		String bar,
+		int pageLimit,
+		int maxRounds,
+		long sleepMs,
+		String[] parts
+	) {
+	}
+
+	private record RoundPreparedData(
+		List<PriceTickEntity> entities,
+		long oldestTs,
+		long newestTs
+	) {
+	}
+
+	private static class BackfillState {
+		private int totalFetched;
+		private int totalInserted;
+		private int rounds;
+		private boolean reachedFrom;
+		private String stopReason = "unknown";
+		private Long lastOldestTs;
+		private Long lastNewestTs;
+		private Long nextCursorAfter;
+		private long lastOldestTsGuard = Long.MAX_VALUE;
+		private long cursorAfter;
+
+		private static BackfillState startWith(long toTs) {
+			BackfillState state = new BackfillState();
+			state.cursorAfter = toTs;
+			state.nextCursorAfter = toTs;
+			return state;
+		}
 	}
 
 	public record BackfillResult(
