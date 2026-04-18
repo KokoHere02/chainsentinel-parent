@@ -8,6 +8,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -68,16 +69,11 @@ public class PriceTickBackfillDispatchService {
 
 	private void doBackfill(String instId, String trigger) {
 		long startedMs = System.currentTimeMillis();
+		BackfillParams params = resolveBackfillParams();
 		try {
-			int retentionDays = resolveRetentionDays();
-			String bar = resolveBar();
-			int pageLimit = resolvePageLimit();
-			int maxRounds = resolveMaxRounds();
-			long sleepMs = resolveSleepMs();
-
 			long toTs = startedMs;
 			long fromTs = Instant.ofEpochMilli(toTs)
-				.minus(retentionDays, ChronoUnit.DAYS)
+				.minus(params.retentionDays(), ChronoUnit.DAYS)
 				.toEpochMilli();
 			log.info(
 				"price.tick.backfill.enqueue instId={} trigger={} from={} to={} days={} bar={} pageLimit={} maxRounds={} sleepMs={}",
@@ -85,20 +81,20 @@ public class PriceTickBackfillDispatchService {
 				trigger,
 				fromTs,
 				toTs,
-				retentionDays,
-				bar,
-				pageLimit,
-				maxRounds,
-				sleepMs
+				params.retentionDays(),
+				params.bar(),
+				params.pageLimit(),
+				params.maxRounds(),
+				params.sleepMs()
 			);
 			okxPriceTickBackfillService.backfill(
 				instId,
 				fromTs,
 				toTs,
-				bar,
-				pageLimit,
-				maxRounds,
-				sleepMs
+				params.bar(),
+				params.pageLimit(),
+				params.maxRounds(),
+				params.sleepMs()
 			);
 			incrementDispatchCounter(trigger, "success");
 			recordBackfillDuration(trigger, "success", startedMs);
@@ -111,24 +107,23 @@ public class PriceTickBackfillDispatchService {
 		}
 	}
 
-	private int resolveRetentionDays() {
-		return backfillProperties.getRetentionDays() > 0 ? backfillProperties.getRetentionDays() : DEFAULT_RETENTION_DAYS;
-	}
-
-	private String resolveBar() {
-		return StringUtils.hasText(backfillProperties.getBar()) ? backfillProperties.getBar().trim() : DEFAULT_BAR;
-	}
-
-	private int resolvePageLimit() {
-		return backfillProperties.getPageLimit() > 0 ? backfillProperties.getPageLimit() : DEFAULT_PAGE_LIMIT;
-	}
-
-	private int resolveMaxRounds() {
-		return backfillProperties.getMaxRounds() > 0 ? backfillProperties.getMaxRounds() : DEFAULT_MAX_ROUNDS;
-	}
-
-	private long resolveSleepMs() {
-		return backfillProperties.getSleepMs() >= 0L ? backfillProperties.getSleepMs() : DEFAULT_SLEEP_MS;
+	private BackfillParams resolveBackfillParams() {
+		int retentionDays = backfillProperties.getRetentionDays() > 0
+			? backfillProperties.getRetentionDays()
+			: DEFAULT_RETENTION_DAYS;
+		String bar = StringUtils.hasText(backfillProperties.getBar())
+			? backfillProperties.getBar().trim()
+			: DEFAULT_BAR;
+		int pageLimit = backfillProperties.getPageLimit() > 0
+			? backfillProperties.getPageLimit()
+			: DEFAULT_PAGE_LIMIT;
+		int maxRounds = backfillProperties.getMaxRounds() > 0
+			? backfillProperties.getMaxRounds()
+			: DEFAULT_MAX_ROUNDS;
+		long sleepMs = backfillProperties.getSleepMs() >= 0L
+			? backfillProperties.getSleepMs()
+			: DEFAULT_SLEEP_MS;
+		return new BackfillParams(retentionDays, bar, pageLimit, maxRounds, sleepMs);
 	}
 
 	private void incrementDispatchCounter(String trigger, String status) {
@@ -137,7 +132,8 @@ public class PriceTickBackfillDispatchService {
 
 	private void recordBackfillDuration(String trigger, String status, long startedMs) {
 		long durationMs = Math.max(0L, System.currentTimeMillis() - startedMs);
-		meterRegistry.timer(METRIC_BACKFILL_DURATION, "trigger", trigger, "status", status).record(durationMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+		meterRegistry.timer(METRIC_BACKFILL_DURATION, "trigger", trigger, "status", status)
+			.record(durationMs, TimeUnit.MILLISECONDS);
 	}
 
 	private String normalizeInstId(String instId) {
@@ -152,5 +148,14 @@ public class PriceTickBackfillDispatchService {
 			return "unknown";
 		}
 		return trigger.trim().toLowerCase(Locale.ROOT);
+	}
+
+	private record BackfillParams(
+		int retentionDays,
+		String bar,
+		int pageLimit,
+		int maxRounds,
+		long sleepMs
+	) {
 	}
 }

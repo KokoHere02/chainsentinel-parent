@@ -13,14 +13,17 @@ import com.chainsentinel.price.stream.ws.WebSocketMessageHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
@@ -48,6 +51,8 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	private static final String METRIC_WS_QUOTE_DROPPED_TOTAL = "price_ws_quote_dropped_total";
 	private static final long QUOTE_SHORT_WINDOW_MS = 2000L;
 	private static final double QUOTE_MAX_JUMP_RATIO = 0.20D;
+	private static final int QUOTE_JUMP_RATIO_SCALE = 8;
+	private static final BigDecimal DECIMAL_ZERO = BigDecimal.ZERO;
 	private static final long FIRST_QUOTE_TIMEOUT_MS = 30000L;
 	private static final int RECONNECT_BASE_DELAY_SEC = 3;
 	private static final int RECONNECT_MAX_DELAY_SEC = 30;
@@ -421,7 +426,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 			recordQuoteDrop("invalid_payload", quote, null, null);
 			return false;
 		}
-		if (quote.price().compareTo(BigDecimal.ZERO) <= 0) {
+		if (quote.price().compareTo(DECIMAL_ZERO) <= 0) {
 			recordQuoteDrop("invalid_price", quote, null, null);
 			return false;
 		}
@@ -440,13 +445,13 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 			recordQuoteDrop("ts_duplicate", quote, previousTs, previousPrice);
 			return false;
 		}
-		if (previousTs != null && previousPrice != null && previousPrice.compareTo(BigDecimal.ZERO) > 0) {
+		if (previousTs != null && previousPrice != null && previousPrice.compareTo(DECIMAL_ZERO) > 0) {
 			long deltaTs = quote.ts() - previousTs;
 			if (deltaTs >= 0 && deltaTs <= QUOTE_SHORT_WINDOW_MS) {
 				double jumpRatio = quote.price()
 					.subtract(previousPrice)
 					.abs()
-					.divide(previousPrice, 8, java.math.RoundingMode.HALF_UP)
+					.divide(previousPrice, QUOTE_JUMP_RATIO_SCALE, RoundingMode.HALF_UP)
 					.doubleValue();
 				if (jumpRatio >= QUOTE_MAX_JUMP_RATIO) {
 					recordQuoteDrop("suspicious_jump", quote, previousTs, previousPrice);
@@ -588,16 +593,16 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	}
 
 	private List<String> collectInstIds(List<PriceQuery> queries) {
-		List<String> instIds = new ArrayList<>();
 		if (queries == null || queries.isEmpty()) {
-			return instIds;
+			return List.of();
 		}
+		Set<String> instIdSet = new LinkedHashSet<>();
 		for (PriceQuery query : queries) {
 			String instId = buildInstId(query);
-			if (instId != null && !instIds.contains(instId)) {
-				instIds.add(instId);
+			if (instId != null) {
+				instIdSet.add(instId);
 			}
 		}
-		return instIds;
+		return new ArrayList<>(instIdSet);
 	}
 }
