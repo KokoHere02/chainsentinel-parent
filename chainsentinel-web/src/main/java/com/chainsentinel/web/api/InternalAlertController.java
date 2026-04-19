@@ -3,6 +3,7 @@ package com.chainsentinel.web.api;
 import com.chainsentinel.core.service.AlertDispatchService;
 import com.chainsentinel.infra.service.AlertFailureSummaryService;
 import com.chainsentinel.infra.service.AlertRetryService;
+import com.chainsentinel.web.api.support.ratelimit.RateLimit;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -42,12 +43,26 @@ public class InternalAlertController {
 	}
 
 	@PostMapping("/{id}/retry")
+	@RateLimit(
+		name = "internal.alerts.retry-one",
+		permits = 5,
+		windowSeconds = 10,
+		scope = RateLimit.Scope.IP,
+		message = "Retry too frequent, retry later"
+	)
 	public RetryResult retryOne(@PathVariable("id") Long id) {
 		boolean ok = alertDispatchService.retryOne(id);
 		return new RetryResult(id, ok, Instant.now());
 	}
 
 	@PostMapping("/retry-failed")
+	@RateLimit(
+		name = "internal.alerts.retry-failed",
+		permits = 2,
+		windowSeconds = 10,
+		scope = RateLimit.Scope.IP,
+		message = "Batch retry too frequent, retry later"
+	)
 	public AlertRetryService.BatchRetryResult retryFailed(
 		@RequestParam(name = "limit", defaultValue = "100") int limit
 	) {

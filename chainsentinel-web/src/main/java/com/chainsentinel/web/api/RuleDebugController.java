@@ -15,6 +15,7 @@ import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.rule.AmountComparisonValueConverter;
 import com.chainsentinel.infra.rule.EventRuleConditionParser;
 import com.chainsentinel.infra.rule.RuleConditionJsonParser;
+import com.chainsentinel.web.api.support.ratelimit.RateLimit;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -67,6 +68,7 @@ public class RuleDebugController {
 	}
 
 	@PostMapping("/{id}/test-match")
+	@RateLimit(name = "rules.test-match.single", permits = 8, windowSeconds = 10, scope = RateLimit.Scope.IP, message = "Debug test-match too frequent")
 	public RuleTestMatchResponse testMatch(@PathVariable Long id, @RequestBody @Valid RuleTestMatchRequest request) {
 		Timer.Sample timerSample = Timer.start(meterRegistry);
 		log.info("rule.test_match.request ruleId={} mode=single samples=1", id);
@@ -84,6 +86,7 @@ public class RuleDebugController {
 	}
 
 	@PostMapping("/{id}/test-match/batch")
+	@RateLimit(name = "rules.test-match.batch", permits = 4, windowSeconds = 10, scope = RateLimit.Scope.IP, message = "Debug batch test too frequent")
 	public List<BatchRuleTestMatchItem> testMatchBatch(
 		@PathVariable Long id,
 		@RequestBody @Valid RuleTestMatchBatchRequest request

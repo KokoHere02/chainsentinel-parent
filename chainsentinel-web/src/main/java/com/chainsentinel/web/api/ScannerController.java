@@ -1,10 +1,9 @@
 package com.chainsentinel.web.api;
 
-import java.time.Instant;
-
 import com.chainsentinel.core.service.ScannerService;
+import com.chainsentinel.web.api.support.ratelimit.RateLimit;
 import jakarta.validation.constraints.Min;
-
+import java.time.Instant;
 import org.springframework.context.annotation.Profile;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -25,6 +24,13 @@ public class ScannerController {
 
 	@Profile("dev")
 	@PostMapping("/run")
+	@RateLimit(
+		name = "scanner.run",
+		permits = 2,
+		windowSeconds = 10,
+		scope = RateLimit.Scope.IP,
+		message = "Scanner run too frequent, retry later"
+	)
 	public ScanRunResponse run(
 		@RequestParam(name = "times", defaultValue = "1") @Min(1) Integer times,
 		@RequestParam(name = "full", defaultValue = "false") Boolean full
