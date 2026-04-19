@@ -1,6 +1,7 @@
 package com.chainsentinel.web.api;
 
 import com.chainsentinel.infra.service.OkxPriceTickBackfillService;
+import com.chainsentinel.web.api.support.ratelimit.RateLimit;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -23,6 +24,13 @@ public class InternalPriceTickBackfillController {
 	}
 
 	@PostMapping("/okx")
+	@RateLimit(
+		name = "internal.price-ticks.backfill.okx",
+		permits = 2,
+		windowSeconds = 10,
+		scope = RateLimit.Scope.IP,
+		message = "Backfill too frequent, retry later"
+	)
 	public OkxPriceTickBackfillService.BackfillResult backfillOkx(@RequestBody @Valid BackfillRequest request) {
 		if (request.fromTs() > request.toTs()) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "fromTs must be less than or equal to toTs");
