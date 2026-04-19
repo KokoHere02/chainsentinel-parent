@@ -10,6 +10,7 @@ public class PriceTickBackfillProperties {
 	private int pageLimit = 300;
 	private int maxRounds = 1000;
 	private long sleepMs = 50L;
+	private int globalMaxConcurrent = 1;
 
 	public int getRetentionDays() {
 		return retentionDays;
@@ -49,5 +50,13 @@ public class PriceTickBackfillProperties {
 
 	public void setSleepMs(long sleepMs) {
 		this.sleepMs = sleepMs;
+	}
+
+	public int getGlobalMaxConcurrent() {
+		return globalMaxConcurrent;
+	}
+
+	public void setGlobalMaxConcurrent(int globalMaxConcurrent) {
+		this.globalMaxConcurrent = globalMaxConcurrent;
 	}
 }

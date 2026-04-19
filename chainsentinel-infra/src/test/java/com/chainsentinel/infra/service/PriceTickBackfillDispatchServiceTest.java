@@ -1,6 +1,8 @@
 package com.chainsentinel.infra.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -13,7 +15,10 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Queue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -202,6 +207,102 @@ class PriceTickBackfillDispatchServiceTest {
 		);
 	}
 
+	@Test
+	void shouldLimitGlobalConcurrentBackfillToConfiguredMax() throws Exception {
+		SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		PriceTickBackfillProperties properties = new PriceTickBackfillProperties();
+		properties.setGlobalMaxConcurrent(1);
+		PriceTickBackfillDispatchService service = new PriceTickBackfillDispatchService(
+			okxPriceTickBackfillService,
+			new SpawningExecutor(),
+			meterRegistry,
+			properties
+		);
+		AtomicInteger currentInFlight = new AtomicInteger(0);
+		AtomicInteger maxInFlight = new AtomicInteger(0);
+		AtomicInteger callCount = new AtomicInteger(0);
+		CountDownLatch firstEntered = new CountDownLatch(1);
+		CountDownLatch secondEntered = new CountDownLatch(1);
+		CountDownLatch releaseFirst = new CountDownLatch(1);
+		CountDownLatch done = new CountDownLatch(2);
+		when(okxPriceTickBackfillService.backfill(
+			org.mockito.ArgumentMatchers.anyString(),
+			anyLong(),
+			anyLong(),
+			org.mockito.ArgumentMatchers.anyString(),
+			anyInt(),
+			anyInt(),
+			anyLong()
+		)).thenAnswer(invocation -> {
+			int inFlight = currentInFlight.incrementAndGet();
+			maxInFlight.updateAndGet(prev -> Math.max(prev, inFlight));
+			int seq = callCount.incrementAndGet();
+			if (seq == 1) {
+				firstEntered.countDown();
+				releaseFirst.await(2, TimeUnit.SECONDS);
+			} else {
+				secondEntered.countDown();
+			}
+			currentInFlight.decrementAndGet();
+			done.countDown();
+			String instId = invocation.getArgument(0, String.class);
+			return new OkxPriceTickBackfillService.BackfillResult(
+				instId,
+				0L,
+				0L,
+				"1m",
+				1,
+				0,
+				0,
+				false,
+				"ok",
+				null,
+				null,
+				null,
+				Instant.now(),
+				Instant.now()
+			);
+		});
+
+		service.submitLast30Days("BTC-USDT", "daily");
+		service.submitLast30Days("ETH-USDT", "daily");
+
+		assertTrue(firstEntered.await(1, TimeUnit.SECONDS));
+		assertFalse(secondEntered.await(300, TimeUnit.MILLISECONDS));
+		releaseFirst.countDown();
+		assertTrue(secondEntered.await(2, TimeUnit.SECONDS));
+		assertTrue(done.await(2, TimeUnit.SECONDS));
+		assertEquals(1, maxInFlight.get());
+		assertEquals(2, callCount.get());
+	}
+
+	@Test
+	void shouldRecordFailureReasonMetricWhenBackfillThrows() {
+		SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		PriceTickBackfillDispatchService service = new PriceTickBackfillDispatchService(
+			okxPriceTickBackfillService,
+			Runnable::run,
+			meterRegistry,
+			defaultProperties()
+		);
+		when(okxPriceTickBackfillService.backfill(
+			eq("BTC-USDT"),
+			anyLong(),
+			anyLong(),
+			eq("1m"),
+			anyInt(),
+			anyInt(),
+			anyLong()
+		)).thenThrow(new IllegalStateException("backfill already running for instId=BTC-USDT"));
+
+		service.submitLast30Days("BTC-USDT", "daily");
+
+		assertEquals(1.0,
+			meterRegistry.get("price_tick_backfill_failure_total")
+				.tags("trigger", "daily", "phase", "run", "reason", "inst_running")
+				.counter().count());
+	}
+
 	private PriceTickBackfillProperties defaultProperties() {
 		return new PriceTickBackfillProperties();
 	}
@@ -218,6 +319,15 @@ class PriceTickBackfillDispatchServiceTest {
 			while (!tasks.isEmpty()) {
 				tasks.poll().run();
 			}
+		}
+	}
+
+	private static class SpawningExecutor implements Executor {
+		@Override
+		public void execute(Runnable command) {
+			Thread t = new Thread(command);
+			t.setDaemon(true);
+			t.start();
 		}
 	}
 }
