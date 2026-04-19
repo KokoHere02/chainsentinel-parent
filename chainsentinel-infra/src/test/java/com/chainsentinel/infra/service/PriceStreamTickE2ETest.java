@@ -61,7 +61,7 @@ class PriceStreamTickE2ETest {
 		PriceStreamProvider provider = new OneShotProvider(emittedQuote);
 		ApplicationEventPublisher eventPublisher = event -> {
 		};
-		new PriceStreamManager(List.of(provider), cache, batchWriter, eventPublisher);
+		new PriceStreamManager(List.of(provider), cache, batchWriter, eventPublisher, new SimpleMeterRegistry());
 
 		PriceQuery query = new PriceQuery("OFFCHAIN", PriceInstType.SPOT, "BTC", "USDT", null);
 		PriceQuote quote = cache.get(query).orElseThrow();
