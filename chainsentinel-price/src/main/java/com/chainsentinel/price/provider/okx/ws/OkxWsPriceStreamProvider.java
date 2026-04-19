@@ -51,6 +51,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	private static final String METRIC_WS_QUOTE_DROPPED_TOTAL = "price_ws_quote_dropped_total";
 	private static final long DEFAULT_QUOTE_SHORT_WINDOW_MS = 2000L;
 	private static final double DEFAULT_QUOTE_MAX_JUMP_RATIO = 0.20D;
+	private static final long DEFAULT_DROP_LOG_INTERVAL_MS = 30000L;
 	private static final int QUOTE_JUMP_RATIO_SCALE = 8;
 	private static final BigDecimal DECIMAL_ZERO = BigDecimal.ZERO;
 	private static final long FIRST_QUOTE_TIMEOUT_MS = 30000L;
@@ -81,6 +82,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	private final Map<String, Long> pendingFirstQuoteAt = new ConcurrentHashMap<>();
 	private final Map<String, Long> lastQuoteTsByInst = new ConcurrentHashMap<>();
 	private final Map<String, BigDecimal> lastPriceByInst = new ConcurrentHashMap<>();
+	private final Map<String, Long> lastQuoteDropLogAtByKey = new ConcurrentHashMap<>();
 	private volatile ScheduledExecutorService keepaliveExecutor;
 	private volatile ScheduledExecutorService reconnectExecutor;
 	private volatile String wsUrl;
@@ -432,6 +434,13 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 			? quoteGuardProperties.getMaxJumpRatio()
 			: DEFAULT_QUOTE_MAX_JUMP_RATIO;
 	}
+
+	private long resolveDropLogIntervalMs() {
+		return quoteGuardProperties.getDropLogIntervalMs() > 0L
+			? quoteGuardProperties.getDropLogIntervalMs()
+			: DEFAULT_DROP_LOG_INTERVAL_MS;
+	}
+
 	private void incrementKeepaliveCounter(String action) {
 		meterRegistry.counter(METRIC_WS_KEEPALIVE_TOTAL, "provider", PROVIDER_NAME, "action", action).increment();
 	}
@@ -483,16 +492,26 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 		String instId = quote == null ? "" : quote.instId();
 		BigDecimal currentPrice = quote == null ? null : quote.price();
 		Long currentTs = quote == null ? null : quote.ts();
-		log.warn(
-			"price.ws.okx.quote.drop reason={} instId={} prevTs={} prevPrice={} currentTs={} currentPrice={}",
-			reason,
-			instId,
-			previousTs,
-			previousPrice,
-			currentTs,
-			currentPrice
-		);
+		if (shouldLogQuoteDrop(instId, reason)) {
+			log.warn(
+				"price.ws.okx.quote.drop reason={} instId={} prevTs={} prevPrice={} currentTs={} currentPrice={}",
+				reason,
+				instId,
+				previousTs,
+				previousPrice,
+				currentTs,
+				currentPrice
+			);
+		}
 		meterRegistry.counter(METRIC_WS_QUOTE_DROPPED_TOTAL, "provider", PROVIDER_NAME, "reason", reason).increment();
+	}
+
+	private boolean shouldLogQuoteDrop(String instId, String reason) {
+		long now = System.currentTimeMillis();
+		long intervalMs = resolveDropLogIntervalMs();
+		String key = (instId == null ? "" : instId) + "|" + (reason == null ? "" : reason);
+		Long last = lastQuoteDropLogAtByKey.put(key, now);
+		return last == null || now - last >= intervalMs;
 	}
 
 	private boolean handleControlEventMessage(String text) {

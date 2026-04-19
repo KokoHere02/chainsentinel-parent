@@ -70,6 +70,8 @@ chainsentinel:
           max-jump-ratio: 0.2
           # Short window in ms for jump detection
           short-window-ms: 2000
+          # Throttle same instId+reason drop logs to avoid log flood
+          drop-log-interval-ms: 30000
 
 logging:
   level:
