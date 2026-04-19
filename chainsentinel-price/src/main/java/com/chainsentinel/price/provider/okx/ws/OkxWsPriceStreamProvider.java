@@ -18,12 +18,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
+
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
@@ -113,7 +113,12 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 
 	@Override
 	public boolean supports(PriceQuery query) {
-		return query != null && query.instType() == PriceInstType.SPOT;
+		if (query == null || query.instType() == null) {
+			return false;
+		}
+		return switch (query.instType()) {
+			case SPOT, MARGIN, SWAP, FUTURES, OPTION -> true;
+		};
 	}
 
 	@Override
@@ -227,24 +232,24 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 			incrementSubscribeCounter("skip_empty");
 			return;
 		}
-		List<String> instIds = collectInstIds(queries);
-		if (instIds.isEmpty()) {
+		List<WsSubscribeArg> targets = collectSubscribeArgs(queries);
+		if (targets.isEmpty()) {
 			incrementSubscribeCounter("skip_empty_inst");
 			return;
 		}
 		long now = System.currentTimeMillis();
-		for (String instId : instIds) {
-			String payload = buildSubscribePayload(instId);
+		for (WsSubscribeArg target : targets) {
+			String payload = buildSubscribePayload(target);
 			if (payload == null || payload.isBlank()) {
 				incrementSubscribeCounter("skip_blank_payload");
 				continue;
 			}
-			pendingFirstQuoteAt.put(instId, now);
+			pendingFirstQuoteAt.put(target.instId(), now);
 			client.sendText(payload);
 			incrementSubscribeCounter("sent");
-			log.info("price.ws.okx.subscribe.sent instId={}", instId);
+			log.info("price.ws.okx.subscribe.sent instType={} instId={}", target.instType(), target.instId());
 		}
-		log.info("price.ws.okx.subscribe.sent_batch count={} instIds={}", instIds.size(), instIds);
+		log.info("price.ws.okx.subscribe.sent_batch count={} targets={}", targets.size(), targets);
 	}
 
 	@Override
@@ -264,14 +269,15 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 		return (query.symbol().trim() + "-" + query.quoteSymbol().trim()).toUpperCase(Locale.ROOT);
 	}
 
-	private String buildSubscribePayload(String instId) {
-		if (instId == null || instId.isBlank()) {
+	private String buildSubscribePayload(WsSubscribeArg target) {
+		if (target == null || target.instId() == null || target.instId().isBlank()) {
 			return "";
 		}
 		List<Map<String, Object>> args = new ArrayList<>();
 		Map<String, Object> arg = new HashMap<>();
 		arg.put("channel", "tickers");
-		arg.put("instId", instId);
+		arg.put("instType", target.instType());
+		arg.put("instId", target.instId());
 		args.add(arg);
 		Map<String, Object> payload = new HashMap<>();
 		payload.put("op", "subscribe");
@@ -280,7 +286,10 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 			return objectMapper.writeValueAsString(payload);
 		} catch (Exception ex) {
 			incrementSubscribeCounter("payload_failed");
-			log.warn("price.ws.okx.subscribe.payload_failed instId={} error={}", instId, ex.getMessage());
+			log.warn("price.ws.okx.subscribe.payload_failed instType={} instId={} error={}",
+				target.instType(),
+				target.instId(),
+				ex.getMessage());
 			return "";
 		}
 	}
@@ -358,10 +367,10 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 			return;
 		}
 		List<PriceQuery> queries = new ArrayList<>(lastQueries);
-		List<String> instIds = collectInstIds(queries);
+		List<WsSubscribeArg> targets = collectSubscribeArgs(queries);
 		lastResubscribeAtMs.set(System.currentTimeMillis());
-		lastResubscribeCount.set(instIds.size());
-		log.info("price.ws.okx.resubscribe.start count={} instIds={}", instIds.size(), instIds);
+		lastResubscribeCount.set(targets.size());
+		log.info("price.ws.okx.resubscribe.start count={} targets={}", targets.size(), targets);
 		subscribe(queries);
 	}
 
@@ -626,17 +635,34 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 		return (int) Math.min(delay, RECONNECT_MAX_DELAY_SEC);
 	}
 
-	private List<String> collectInstIds(List<PriceQuery> queries) {
+	private List<WsSubscribeArg> collectSubscribeArgs(List<PriceQuery> queries) {
 		if (queries == null || queries.isEmpty()) {
 			return List.of();
 		}
-		Set<String> instIdSet = new LinkedHashSet<>();
+		Map<String, WsSubscribeArg> unique = new LinkedHashMap<>();
 		for (PriceQuery query : queries) {
 			String instId = buildInstId(query);
-			if (instId != null) {
-				instIdSet.add(instId);
+			String instType = normalizeOkxInstType(query == null ? null : query.instType());
+			if (instId == null || instId.isBlank()) {
+				continue;
 			}
+			String key = instType + "|" + instId;
+			unique.putIfAbsent(key, new WsSubscribeArg(instType, instId));
 		}
-		return new ArrayList<>(instIdSet);
+		return new ArrayList<>(unique.values());
+	}
+
+	private String normalizeOkxInstType(PriceInstType instType) {
+		if (instType == null) {
+			return PriceInstType.SPOT.name();
+		}
+		return instType.name();
+	}
+
+	record WsSubscribeArg(String instType, String instId) {
+		@Override
+		public String toString() {
+			return instType + ":" + instId;
+		}
 	}
 }
