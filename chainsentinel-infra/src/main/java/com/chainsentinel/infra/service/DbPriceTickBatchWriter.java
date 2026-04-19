@@ -64,6 +64,17 @@ public class DbPriceTickBatchWriter implements PriceTickBatchWriter {
 		queueSize.incrementAndGet();
 	}
 
+	public TickIngestStatus currentStatus() {
+		return new TickIngestStatus(
+			properties.isEnabled(),
+			properties.getBatchSize(),
+			properties.getQueueCapacity(),
+			properties.getFlushIntervalMs(),
+			queueSize.get(),
+			flushing.get()
+		);
+	}
+
 	@Scheduled(fixedDelayString = "${chainsentinel.price.tick.flush-interval-ms:1000}")
 	public void flushBySchedule() {
 		flushNow();
@@ -83,23 +94,30 @@ public class DbPriceTickBatchWriter implements PriceTickBatchWriter {
 			return;
 		}
 		try {
-			List<PriceStreamQuote> drained = drainBatch(properties.getBatchSize());
-			if (drained.isEmpty()) {
-				return;
-			}
-			List<PriceTickEntity> entities = dedupAndConvert(drained);
-			if (entities.isEmpty()) {
-				return;
-			}
-			try {
-				priceTickRepository.saveAll(entities);
-				meterRegistry.counter(METRIC_WS_TICK_BATCH_TOTAL, "status", "success").increment();
-			} catch (DataIntegrityViolationException ex) {
-				saveIndividuallyIgnoreDuplicate(entities);
-				meterRegistry.counter(METRIC_WS_TICK_BATCH_TOTAL, "status", "partial_duplicate").increment();
+			int batchSize = Math.max(1, properties.getBatchSize());
+			while (true) {
+				List<PriceStreamQuote> drained = drainBatch(batchSize);
+				if (drained.isEmpty()) {
+					return;
+				}
+				flushBatch(drained);
 			}
 		} finally {
 			flushing.set(false);
+		}
+	}
+
+	private void flushBatch(List<PriceStreamQuote> drained) {
+		List<PriceTickEntity> entities = dedupAndConvert(drained);
+		if (entities.isEmpty()) {
+			return;
+		}
+		try {
+			priceTickRepository.saveAll(entities);
+			meterRegistry.counter(METRIC_WS_TICK_BATCH_TOTAL, "status", "success").increment();
+		} catch (DataIntegrityViolationException ex) {
+			saveIndividuallyIgnoreDuplicate(entities);
+			meterRegistry.counter(METRIC_WS_TICK_BATCH_TOTAL, "status", "partial_duplicate").increment();
 		}
 	}
 
@@ -118,7 +136,7 @@ public class DbPriceTickBatchWriter implements PriceTickBatchWriter {
 	}
 
 	private List<PriceTickEntity> dedupAndConvert(List<PriceStreamQuote> drained) {
-		Map<String, PriceTickEntity> unique = new LinkedHashMap<>();
+		Map<String, PriceTickEntity> unique = new LinkedHashMap<>(drained.size());
 		for (PriceStreamQuote quote : drained) {
 			if (quote == null || quote.instId() == null || quote.instId().isBlank() || quote.price() == null || quote.ts() <= 0) {
 				continue;
@@ -182,5 +200,15 @@ public class DbPriceTickBatchWriter implements PriceTickBatchWriter {
 			return new String[] {instId, "UNKNOWN"};
 		}
 		return new String[] {parts[0], parts[1]};
+	}
+
+	public record TickIngestStatus(
+		boolean enabled,
+		int batchSize,
+		int queueCapacity,
+		long flushIntervalMs,
+		int queueSize,
+		boolean flushing
+	) {
 	}
 }

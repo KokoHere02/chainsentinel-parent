@@ -2,6 +2,7 @@ package com.chainsentinel.infra.service;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -120,5 +121,52 @@ class DbPriceTickBatchWriterTest {
 		verify(priceTickRepository, times(1)).saveAll(any());
 		verify(priceTickRepository, times(2)).save(any());
 	}
-}
 
+	@Test
+	void shouldDrainMultipleBatchesInSingleFlush() {
+		PriceTickIngestProperties properties = new PriceTickIngestProperties();
+		properties.setEnabled(true);
+		properties.setBatchSize(2);
+
+		DbPriceTickBatchWriter writer = new DbPriceTickBatchWriter(
+			priceTickRepository,
+			properties,
+			new SimpleMeterRegistry()
+		);
+		when(priceTickRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "BTC", "USDT", new BigDecimal("1"), 1L));
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "ETH", "USDT", new BigDecimal("2"), 2L));
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "SOL", "USDT", new BigDecimal("3"), 3L));
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "DOGE", "USDT", new BigDecimal("4"), 4L));
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "ADA", "USDT", new BigDecimal("5"), 5L));
+
+		writer.flushNow();
+
+		verify(priceTickRepository, times(3)).saveAll(any());
+	}
+
+	@Test
+	void shouldExposeIngestStatusSnapshot() {
+		PriceTickIngestProperties properties = new PriceTickIngestProperties();
+		properties.setEnabled(true);
+		properties.setBatchSize(10);
+		properties.setQueueCapacity(123);
+		properties.setFlushIntervalMs(1500L);
+
+		DbPriceTickBatchWriter writer = new DbPriceTickBatchWriter(
+			priceTickRepository,
+			properties,
+			new SimpleMeterRegistry()
+		);
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "BTC", "USDT", new BigDecimal("1"), 1L));
+
+		DbPriceTickBatchWriter.TickIngestStatus status = writer.currentStatus();
+		assertEquals(true, status.enabled());
+		assertEquals(10, status.batchSize());
+		assertEquals(123, status.queueCapacity());
+		assertEquals(1500L, status.flushIntervalMs());
+		assertEquals(1, status.queueSize());
+		assertFalse(status.flushing());
+	}
+}
