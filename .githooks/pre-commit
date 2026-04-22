@@ -1,0 +1,40 @@
+#!/usr/bin/env sh
+set -eu
+
+staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+[ -z "$staged_files" ] && exit 0
+
+deny_path_regex='(^|/)(application-dev\.yml|application-prod\.yml|application-local\.yml|\.env(\..*)?|.*\.pem|.*\.p12|.*\.jks)$'
+secret_key_regex='(api[-_ ]?key|secret|token|passphrase|private[-_ ]?key|key[-_ ]?base64)[[:space:]]*[:=][[:space:]]*[^[:space:]]+'
+credential_url_regex='https?://[^[:space:]]*(api[-_]?key|token=|access[-_]?key|secret=)'
+
+failed=0
+
+for file in $staged_files; do
+	echo "$file" | grep -E "$deny_path_regex" >/dev/null 2>&1 && {
+		echo "[pre-commit] blocked: sensitive file path staged -> $file"
+		failed=1
+		continue
+	}
+
+	content="$(git show ":$file" 2>/dev/null || true)"
+	[ -z "$content" ] && continue
+
+	echo "$content" | grep -E -i "$secret_key_regex" >/dev/null 2>&1 && {
+		echo "[pre-commit] blocked: possible secret pattern found in $file"
+		failed=1
+	}
+
+	echo "$content" | grep -E -i "$credential_url_regex" >/dev/null 2>&1 && {
+		echo "[pre-commit] blocked: credential-like URL found in $file"
+		failed=1
+	}
+done
+
+[ "$failed" -eq 0 ] || {
+	echo "[pre-commit] commit aborted. Remove or redact sensitive data, then retry."
+	exit 1
+}
+
+exit 0
+

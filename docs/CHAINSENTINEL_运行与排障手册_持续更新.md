@@ -160,3 +160,62 @@ mvn --% -pl chainsentinel-web -am test -Dtest=InternalRuleControllerTest,Interna
 1. 刷新接口增加最小鉴权与审计日志（当前阶段可先不做）。
 2. 为回退指标增加告警阈值建议。
 3. 多实例部署时补分布式缓存失效机制。
+---
+
+## 11. 2026-04-18 运行增强（WS 数据质量 + Backfill 可观测）
+
+### 11.1 WS 数据质量保护（OKX）
+
+在 `okx_ws` 行情消费链路新增了轻量“坏数据丢弃”策略，防止异常数据进入缓存与落库。
+
+丢弃场景（会打日志 + 指标）：
+
+1. `invalid_payload`：消息缺失关键字段（price/ts 等）。
+2. `invalid_price`：价格 `<= 0`。
+3. `invalid_inst`：instId 非法。
+4. `ts_rollback`：同 instId 的时间戳倒退。
+5. `ts_duplicate`：同 instId 的时间戳重复。
+6. `suspicious_jump`：2 秒内价格跳变超过 20%。
+
+相关日志关键字：
+
+- `price.ws.okx.quote.drop reason=...`
+
+相关指标：
+
+- `price_ws_quote_dropped_total{provider="okx_ws", reason="..."}`
+
+说明：
+
+- 命中丢弃规则的 quote 不会进入 `PriceStreamSink#onQuote`，即不会参与后续缓存与落库。
+
+### 11.2 Backfill 分发可观测指标
+
+`PriceTickBackfillDispatchService` 增加了分发与执行指标，便于定位“是否提交成功、是否被 pending 跳过、是否执行失败”。
+
+新增计数器：
+
+- `price_tick_backfill_dispatch_total{trigger,status}`
+  - `status=submitted`
+  - `status=skipped_invalid_inst`
+  - `status=skipped_pending`
+  - `status=submit_failed`
+  - `status=success`
+  - `status=failed`
+
+新增耗时指标：
+
+- `price_tick_backfill_duration{trigger,status}`（Timer）
+
+触发来源 trigger 示例：
+
+- `daily`
+- `target_create`
+- `target_update`
+- `target_enable`
+
+排障建议：
+
+1. `submitted` 有增长但 `success/failed` 长时间不增长：重点检查异步线程池是否阻塞。
+2. `skipped_pending` 持续偏高：说明短时间重复触发多，通常是预期去重行为。
+3. `failed` 上升：结合日志 `price.tick.backfill.async.failed` 看具体错误。

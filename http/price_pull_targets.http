@@ -1,0 +1,43 @@
+### 列表查询 price_pull_target
+GET http://localhost:8080/api/price-pull-targets?providerConfigId=1&enabled=true&q=BTC&limit=50
+
+### 按ID查询
+GET http://localhost:8080/api/price-pull-targets/1
+
+### 新增
+POST http://localhost:8080/api/price-pull-targets
+Content-Type: application/json
+
+{
+  "assetId": 1,
+  "providerConfigId": 1,
+  "instType": "SPOT",
+  "instId": "BTC-USDT",
+  "quoteSymbol": "USDT",
+  "enabled": true,
+  "pollIntervalMs": 1000,
+  "priority": 1
+}
+
+### 修改
+PUT http://localhost:8080/api/price-pull-targets/1
+Content-Type: application/json
+
+{
+  "assetId": 1,
+  "providerConfigId": 1,
+  "instType": "SPOT",
+  "instId": "ETH-USDT",
+  "quoteSymbol": "USDT",
+  "enabled": true,
+  "pollIntervalMs": 1500,
+  "priority": 2
+}
+
+### 删除
+DELETE http://localhost:8080/api/price-pull-targets/1
+### 启用
+PATCH http://localhost:8080/api/price-pull-targets/1/enable
+
+### 停用
+PATCH http://localhost:8080/api/price-pull-targets/1/disable
