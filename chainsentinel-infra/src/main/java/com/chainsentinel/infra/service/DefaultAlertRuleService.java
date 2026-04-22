@@ -17,6 +17,7 @@ import com.chainsentinel.core.service.dto.AlertRuleView;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.rule.RuleConditionJsonParser;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,9 +29,9 @@ import org.springframework.util.StringUtils;
 public class DefaultAlertRuleService implements AlertRuleService {
 
 	private static final Logger log = LoggerFactory.getLogger(DefaultAlertRuleService.class);
+	private static final Set<String> FORBIDDEN_EVENT_FIELDS = Set.of("from_address", "to_address");
 	private static final Set<AlertRuleType> ENABLED_RULE_TYPES = EnumSet.of(
-		AlertRuleType.ADDRESS,
-		AlertRuleType.AMOUNT,
+		AlertRuleType.EVENT,
 		AlertRuleType.PRICE_THRESHOLD
 	);
 
@@ -49,6 +50,7 @@ public class DefaultAlertRuleService implements AlertRuleService {
 	@Transactional
 	public AlertRuleView create(AlertRuleCreateCommand command) {
 		validateRuleType(command.type());
+		validateNoAddressFields(command.type(), command.condition());
 
 		AlertRuleEntity entity = new AlertRuleEntity();
 		entity.setName(command.name());
@@ -74,6 +76,7 @@ public class DefaultAlertRuleService implements AlertRuleService {
 		Long id = Objects.requireNonNull(command.id(), "id is required");
 		AlertRuleEntity entity = alertRuleRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Rule not found: " + id));
+		validateNoAddressFields(entity.getType(), command.condition());
 
 		entity.setName(command.name());
 		entity.setSeverity(command.severity());
@@ -97,6 +100,7 @@ public class DefaultAlertRuleService implements AlertRuleService {
 		Long id = Objects.requireNonNull(command.id(), "id is required");
 		AlertRuleEntity entity = alertRuleRepository.findById(id)
 			.orElseThrow(() -> new NotFoundException("Rule not found: " + id));
+		validateNoAddressFields(entity.getType(), command.condition());
 
 		entity.setConditionJson(ruleConditionJsonParser.serialize(entity.getType(), command.condition()));
 
@@ -212,6 +216,29 @@ public class DefaultAlertRuleService implements AlertRuleService {
 		}
 		log.warn("rule.governance.reject type={} enabledTypes={}", type, ENABLED_RULE_TYPES);
 		throw new RuleGovernanceException(type);
+	}
+
+	private void validateNoAddressFields(AlertRuleType type, JsonNode condition) {
+		if (type != AlertRuleType.EVENT || condition == null || condition.isNull()) {
+			return;
+		}
+		JsonNode all = condition.path("condition").path("all");
+		if (!all.isArray()) {
+			return;
+		}
+		for (JsonNode item : all) {
+			if (item == null || !item.isObject()) {
+				continue;
+			}
+			String field = item.path("field").asText("");
+			if (!StringUtils.hasText(field)) {
+				continue;
+			}
+			String normalized = field.trim().toLowerCase();
+			if (FORBIDDEN_EVENT_FIELDS.contains(normalized)) {
+				throw new IllegalArgumentException("Event rule must not contain address field: " + normalized);
+			}
+		}
 	}
 
 }

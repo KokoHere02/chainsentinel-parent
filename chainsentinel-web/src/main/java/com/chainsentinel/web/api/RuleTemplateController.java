@@ -47,7 +47,7 @@ public class RuleTemplateController {
 			"ADDRESS_LARGE_TRANSFER",
 			"Address Large Transfer",
 			"Trigger when on-chain transfer amount reaches the configured threshold.",
-			AlertRuleType.AMOUNT,
+			AlertRuleType.EVENT,
 			toJsonNode(Map.of(
 				"version", 1,
 				"type", "EVENT",
@@ -65,8 +65,8 @@ public class RuleTemplateController {
 		new RuleTemplateView(
 			"CONTRACT_INTERACTION",
 			"Contract Interaction",
-			"Trigger when target address interacts with the configured contract address.",
-			AlertRuleType.ADDRESS,
+			"Trigger when token transfer amount reaches the configured threshold.",
+			AlertRuleType.EVENT,
 			toJsonNode(Map.of(
 				"version", 1,
 				"type", "EVENT",
@@ -74,7 +74,8 @@ public class RuleTemplateController {
 					"all", List.of(
 						Map.of("field", "chain", "op", "eq", "value", "ETH"),
 						Map.of("field", "network", "op", "eq", "value", "mainnet"),
-						Map.of("field", "to_address", "op", "eq", "value", "0x0000000000000000000000000000000000000000")
+						Map.of("field", "token_contract", "op", "eq", "value", "0xdac17f958d2ee523a2206206994597c13d831ec7"),
+						Map.of("field", "amount", "op", "gte", "value", "1000000")
 					)
 				)
 			)),

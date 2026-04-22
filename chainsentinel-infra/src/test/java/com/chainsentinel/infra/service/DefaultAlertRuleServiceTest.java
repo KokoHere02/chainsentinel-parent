@@ -8,7 +8,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.chainsentinel.core.exception.RuleGovernanceException;
 import com.chainsentinel.core.exception.NotFoundException;
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.rule.model.EventRuleCondition;
@@ -20,6 +19,7 @@ import com.chainsentinel.core.rule.model.PriceRuleCondition;
 import com.chainsentinel.core.rule.model.PriceRuleOperator;
 import com.chainsentinel.core.rule.model.PriceRuleSpec;
 import com.chainsentinel.core.service.dto.AlertRuleCreateCommand;
+import com.chainsentinel.core.service.dto.AlertRulePatchConditionCommand;
 import com.chainsentinel.core.service.dto.AlertRuleQueryCommand;
 import com.chainsentinel.core.service.dto.AlertRuleUpdateCommand;
 import com.chainsentinel.core.service.dto.AlertRuleView;
@@ -76,7 +76,7 @@ class DefaultAlertRuleServiceTest {
 
     AlertRuleCreateCommand command = new AlertRuleCreateCommand(
       "address-watch",
-      AlertRuleType.ADDRESS,
+      AlertRuleType.EVENT,
       objectMapper.valueToTree(spec),
       "HIGH",
       true
@@ -85,7 +85,7 @@ class DefaultAlertRuleServiceTest {
     AlertRuleView view = service.create(command);
 
     assertEquals("address-watch", view.name());
-    assertEquals(AlertRuleType.ADDRESS, view.type());
+    assertEquals(AlertRuleType.EVENT, view.type());
     assertEquals("HIGH", view.severity());
     assertTrue(view.enabled());
     assertEquals(1, objectMapper.readTree(view.conditionJson()).get("version").asInt());
@@ -149,31 +149,6 @@ class DefaultAlertRuleServiceTest {
   }
 
   @Test
-  void shouldRejectFrequencyRuleByGovernance() {
-    DefaultAlertRuleService service = buildService();
-
-    EventRuleSpec spec = new EventRuleSpec(
-      1,
-      "EVENT",
-      new EventRuleCondition(List.of(
-        new EventRuleConditionItem(EventRuleField.CHAIN, EventRuleOperator.EQ, "ETH")
-      ))
-    );
-
-    RuleGovernanceException ex = assertThrows(RuleGovernanceException.class, () -> service.create(new AlertRuleCreateCommand(
-      "freq-rule",
-      AlertRuleType.FREQUENCY,
-      objectMapper.valueToTree(spec),
-      "MEDIUM",
-      true
-    )));
-
-    assertEquals("Rule type is disabled by governance: FREQUENCY", ex.getMessage());
-    assertEquals("RULE_GOVERNANCE_REJECTED", ex.getCode());
-    assertEquals(400, ex.getStatus());
-  }
-
-  @Test
   void shouldThrowIllegalArgumentWhenConditionIsInvalid() {
     DefaultAlertRuleService service = buildService();
 
@@ -183,7 +158,7 @@ class DefaultAlertRuleServiceTest {
 
     AlertRuleCreateCommand command = new AlertRuleCreateCommand(
       "bad-rule",
-      AlertRuleType.ADDRESS,
+      AlertRuleType.EVENT,
       objectMapper.valueToTree(invalid),
       "HIGH",
       true
@@ -191,6 +166,29 @@ class DefaultAlertRuleServiceTest {
 
     IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.create(command));
     assertEquals("condition.all must be a non-empty array", ex.getMessage());
+  }
+
+  @Test
+  void shouldRejectCreateWhenEventRuleContainsAddressField() {
+    DefaultAlertRuleService service = buildService();
+
+    EventRuleSpec spec = new EventRuleSpec(
+      1,
+      "EVENT",
+      new EventRuleCondition(List.of(
+        new EventRuleConditionItem(EventRuleField.CHAIN, EventRuleOperator.EQ, "ETH"),
+        new EventRuleConditionItem(EventRuleField.TO_ADDRESS, EventRuleOperator.EQ, "0xabc")
+      ))
+    );
+
+    IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.create(new AlertRuleCreateCommand(
+      "bad-event-rule",
+      AlertRuleType.EVENT,
+      objectMapper.valueToTree(spec),
+      "HIGH",
+      true
+    )));
+    assertEquals("Event rule must not contain address field: to_address", ex.getMessage());
   }
 
   @Test
@@ -270,13 +268,43 @@ class DefaultAlertRuleServiceTest {
   }
 
   @Test
+  void shouldRejectPatchWhenEventRuleContainsAddressField() {
+    DefaultAlertRuleService service = buildService();
+
+    AlertRuleEntity existing = new AlertRuleEntity();
+    ReflectionTestUtils.setField(existing, "id", 23L);
+    existing.setName("old-name");
+    existing.setType(AlertRuleType.EVENT);
+    existing.setSeverity("MEDIUM");
+    existing.setEnabled(true);
+    existing.setConditionJson("{\"version\":1,\"type\":\"EVENT\",\"condition\":{\"all\":[{\"field\":\"chain\",\"op\":\"eq\",\"value\":\"ETH\"}]}}");
+
+    when(alertRuleRepository.findById(23L)).thenReturn(Optional.of(existing));
+
+    EventRuleSpec spec = new EventRuleSpec(
+      1,
+      "EVENT",
+      new EventRuleCondition(List.of(
+        new EventRuleConditionItem(EventRuleField.CHAIN, EventRuleOperator.EQ, "ETH"),
+        new EventRuleConditionItem(EventRuleField.FROM_ADDRESS, EventRuleOperator.EQ, "0xabc")
+      ))
+    );
+
+    IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.patchCondition(new AlertRulePatchConditionCommand(
+      23L,
+      objectMapper.valueToTree(spec)
+    )));
+    assertEquals("Event rule must not contain address field: from_address", ex.getMessage());
+  }
+
+  @Test
   void shouldListRulesFilteredByType() {
     DefaultAlertRuleService service = buildService();
 
     AlertRuleEntity addressRule = new AlertRuleEntity();
     ReflectionTestUtils.setField(addressRule, "id", 31L);
     addressRule.setName("address-rule");
-    addressRule.setType(AlertRuleType.ADDRESS);
+    addressRule.setType(AlertRuleType.EVENT);
     addressRule.setConditionJson("{}");
     addressRule.setSeverity("HIGH");
     addressRule.setEnabled(true);
@@ -305,7 +333,7 @@ class DefaultAlertRuleServiceTest {
     AlertRuleEntity enabledRule = new AlertRuleEntity();
     ReflectionTestUtils.setField(enabledRule, "id", 41L);
     enabledRule.setName("enabled-rule");
-    enabledRule.setType(AlertRuleType.AMOUNT);
+    enabledRule.setType(AlertRuleType.EVENT);
     enabledRule.setConditionJson("{}");
     enabledRule.setSeverity("HIGH");
     enabledRule.setEnabled(true);
@@ -313,7 +341,7 @@ class DefaultAlertRuleServiceTest {
     AlertRuleEntity disabledRule = new AlertRuleEntity();
     ReflectionTestUtils.setField(disabledRule, "id", 42L);
     disabledRule.setName("disabled-rule");
-    disabledRule.setType(AlertRuleType.AMOUNT);
+    disabledRule.setType(AlertRuleType.EVENT);
     disabledRule.setConditionJson("{}");
     disabledRule.setSeverity("HIGH");
     disabledRule.setEnabled(false);
@@ -334,7 +362,7 @@ class DefaultAlertRuleServiceTest {
     AlertRuleEntity existing = new AlertRuleEntity();
     ReflectionTestUtils.setField(existing, "id", 51L);
     existing.setName("delete-me");
-    existing.setType(AlertRuleType.ADDRESS);
+    existing.setType(AlertRuleType.EVENT);
     existing.setConditionJson("{}");
     existing.setSeverity("HIGH");
     existing.setEnabled(true);
@@ -356,7 +384,7 @@ class DefaultAlertRuleServiceTest {
     AlertRuleEntity existing = new AlertRuleEntity();
     ReflectionTestUtils.setField(existing, "id", 52L);
     existing.setName("already-disabled");
-    existing.setType(AlertRuleType.ADDRESS);
+    existing.setType(AlertRuleType.EVENT);
     existing.setConditionJson("{}");
     existing.setSeverity("HIGH");
     existing.setEnabled(false);
@@ -386,7 +414,7 @@ class DefaultAlertRuleServiceTest {
     AlertRuleEntity existing = new AlertRuleEntity();
     ReflectionTestUtils.setField(existing, "id", 61L);
     existing.setName("toggle-rule");
-    existing.setType(AlertRuleType.ADDRESS);
+    existing.setType(AlertRuleType.EVENT);
     existing.setConditionJson("{}");
     existing.setSeverity("HIGH");
     existing.setEnabled(false);
@@ -408,7 +436,7 @@ class DefaultAlertRuleServiceTest {
     AlertRuleEntity existing = new AlertRuleEntity();
     ReflectionTestUtils.setField(existing, "id", 62L);
     existing.setName("toggle-rule-idempotent");
-    existing.setType(AlertRuleType.ADDRESS);
+    existing.setType(AlertRuleType.EVENT);
     existing.setConditionJson("{}");
     existing.setSeverity("HIGH");
     existing.setEnabled(true);
@@ -422,3 +450,4 @@ class DefaultAlertRuleServiceTest {
     verify(alertRuleRepository, never()).save(any(AlertRuleEntity.class));
   }
 }
+

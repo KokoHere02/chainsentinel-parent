@@ -44,8 +44,9 @@ class RuleControllerTest {
   @BeforeEach
   void setUp() {
     RuleController controller = new RuleController(alertRuleService);
+    RuleTemplateController ruleTemplateController = new RuleTemplateController(alertRuleService);
     mockMvc = MockMvcBuilders
-      .standaloneSetup(controller)
+      .standaloneSetup(controller, ruleTemplateController)
       .setControllerAdvice(new GlobalExceptionHandler())
       .build();
   }
@@ -53,7 +54,7 @@ class RuleControllerTest {
   @Test
   void shouldCreateAddressRuleWithDefaultEnabled() throws Exception {
     when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
-      .thenReturn(new AlertRuleView(2L, "r1", AlertRuleType.ADDRESS, "{}", "HIGH", true));
+      .thenReturn(new AlertRuleView(2L, "r1", AlertRuleType.EVENT, "{}", "HIGH", true));
 
     mockMvc.perform(post("/api/rules")
         .contentType(MediaType.APPLICATION_JSON)
@@ -75,14 +76,14 @@ class RuleControllerTest {
           """))
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.id", is(2)))
-      .andExpect(jsonPath("$.type", is("ADDRESS")))
+      .andExpect(jsonPath("$.type", is("EVENT")))
       .andExpect(jsonPath("$.enabled", is(true)));
 
     ArgumentCaptor<AlertRuleCreateCommand> captor = ArgumentCaptor.forClass(AlertRuleCreateCommand.class);
     verify(alertRuleService).create(captor.capture());
     AlertRuleCreateCommand cmd = captor.getValue();
     Assertions.assertEquals("r1", cmd.name());
-    Assertions.assertEquals(AlertRuleType.ADDRESS, cmd.type());
+    Assertions.assertEquals(AlertRuleType.EVENT, cmd.type());
     Assertions.assertEquals("HIGH", cmd.severity());
     Assertions.assertEquals(true, cmd.enabled());
     Assertions.assertEquals(1, cmd.condition().get("version").asInt());
@@ -91,7 +92,7 @@ class RuleControllerTest {
   @Test
   void shouldCreateAmountRule() throws Exception {
     when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
-      .thenReturn(new AlertRuleView(3L, "amount-rule", AlertRuleType.AMOUNT, "{}", "CRITICAL", true));
+      .thenReturn(new AlertRuleView(3L, "amount-rule", AlertRuleType.EVENT, "{}", "CRITICAL", true));
 
     mockMvc.perform(post("/api/rules")
         .contentType(MediaType.APPLICATION_JSON)
@@ -113,13 +114,13 @@ class RuleControllerTest {
           }
           """))
       .andExpect(status().isOk())
-      .andExpect(jsonPath("$.type", is("AMOUNT")));
+      .andExpect(jsonPath("$.type", is("EVENT")));
 
     ArgumentCaptor<AlertRuleCreateCommand> captor = ArgumentCaptor.forClass(AlertRuleCreateCommand.class);
     verify(alertRuleService).create(captor.capture());
     AlertRuleCreateCommand cmd = captor.getValue();
     Assertions.assertEquals("amount-rule", cmd.name());
-    Assertions.assertEquals(AlertRuleType.AMOUNT, cmd.type());
+    Assertions.assertEquals(AlertRuleType.EVENT, cmd.type());
   }
 
   @Test
@@ -198,7 +199,7 @@ class RuleControllerTest {
   @Test
   void shouldDeleteRule() throws Exception {
     when(alertRuleService.delete(12L))
-      .thenReturn(new AlertRuleView(12L, "r-del", AlertRuleType.ADDRESS, "{}", "HIGH", false));
+      .thenReturn(new AlertRuleView(12L, "r-del", AlertRuleType.EVENT, "{}", "HIGH", false));
 
     mockMvc.perform(delete("/api/rules/12"))
       .andExpect(status().isOk())
@@ -211,13 +212,13 @@ class RuleControllerTest {
   @Test
   void shouldGetRuleById() throws Exception {
     when(alertRuleService.getById(15L))
-      .thenReturn(new AlertRuleView(15L, "r-detail", AlertRuleType.AMOUNT, "{}", "HIGH", true));
+      .thenReturn(new AlertRuleView(15L, "r-detail", AlertRuleType.EVENT, "{}", "HIGH", true));
 
     mockMvc.perform(get("/api/rules/15"))
       .andExpect(status().isOk())
       .andExpect(jsonPath("$.id", is(15)))
       .andExpect(jsonPath("$.name", is("r-detail")))
-      .andExpect(jsonPath("$.type", is("AMOUNT")));
+      .andExpect(jsonPath("$.type", is("EVENT")));
 
     verify(alertRuleService).getById(15L);
   }
@@ -233,7 +234,7 @@ class RuleControllerTest {
   @Test
   void shouldEnableRule() throws Exception {
     when(alertRuleService.setEnabled(21L, true))
-      .thenReturn(new AlertRuleView(21L, "r-enable", AlertRuleType.ADDRESS, "{}", "HIGH", true));
+      .thenReturn(new AlertRuleView(21L, "r-enable", AlertRuleType.EVENT, "{}", "HIGH", true));
 
     mockMvc.perform(patch("/api/rules/21/enable"))
       .andExpect(status().isOk())
@@ -246,7 +247,7 @@ class RuleControllerTest {
   @Test
   void shouldDisableRule() throws Exception {
     when(alertRuleService.setEnabled(22L, false))
-      .thenReturn(new AlertRuleView(22L, "r-disable", AlertRuleType.ADDRESS, "{}", "HIGH", false));
+      .thenReturn(new AlertRuleView(22L, "r-disable", AlertRuleType.EVENT, "{}", "HIGH", false));
 
     mockMvc.perform(patch("/api/rules/22/disable"))
       .andExpect(status().isOk())
@@ -261,7 +262,7 @@ class RuleControllerTest {
     when(alertRuleService.create(any(AlertRuleCreateCommand.class)))
       .thenReturn(new AlertRuleView(31L, "BTC breakout custom", AlertRuleType.PRICE_THRESHOLD, "{}", "CRITICAL", true));
 
-    mockMvc.perform(post("/api/rules/from-template")
+    mockMvc.perform(post("/api/rule-templates/from-template")
         .contentType(MediaType.APPLICATION_JSON)
         .content("""
           {
@@ -294,7 +295,7 @@ class RuleControllerTest {
 
   @Test
   void shouldReturn400WhenTemplateKeyInvalid() throws Exception {
-    mockMvc.perform(post("/api/rules/from-template")
+    mockMvc.perform(post("/api/rule-templates/from-template")
         .contentType(MediaType.APPLICATION_JSON)
         .content("""
           {
@@ -312,7 +313,7 @@ class RuleControllerTest {
     when(alertRuleService.list(any(AlertRuleQueryCommand.class))).thenReturn(List.of(created));
     when(alertRuleService.getById(41L)).thenReturn(created);
 
-    mockMvc.perform(post("/api/rules/from-template")
+    mockMvc.perform(post("/api/rule-templates/from-template")
         .contentType(MediaType.APPLICATION_JSON)
         .content("""
           {
@@ -393,3 +394,4 @@ class RuleControllerTest {
       .andExpect(jsonPath("$.code", is("INVALID_ARGUMENT")));
   }
 }
+
