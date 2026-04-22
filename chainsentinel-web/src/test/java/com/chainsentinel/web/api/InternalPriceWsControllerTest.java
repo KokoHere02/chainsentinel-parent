@@ -7,10 +7,14 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.chainsentinel.price.api.dto.PriceInstType;
+import com.chainsentinel.price.api.dto.PriceQuery;
+import com.chainsentinel.price.stream.PriceStreamManager;
 import com.chainsentinel.price.stream.PriceStreamProviderStatus;
 import com.chainsentinel.price.stream.PriceStreamStatusService;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,11 +29,14 @@ class InternalPriceWsControllerTest {
 	@Mock
 	private PriceStreamStatusService priceStreamStatusService;
 
+	@Mock
+	private PriceStreamManager priceStreamManager;
+
 	private MockMvc mockMvc;
 
 	@BeforeEach
 	void setUp() {
-		InternalPriceWsController controller = new InternalPriceWsController(priceStreamStatusService);
+		InternalPriceWsController controller = new InternalPriceWsController(priceStreamStatusService, priceStreamManager);
 		mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 	}
 
@@ -60,5 +67,26 @@ class InternalPriceWsControllerTest {
 			.andExpect(jsonPath("$[0].reconnectAttempts", is(4)))
 			.andExpect(jsonPath("$[0].lastReconnectReason", is("error")))
 			.andExpect(jsonPath("$[0].lastErrorType", is("HttpConnectTimeoutException")));
+	}
+
+	@Test
+	void shouldReturnCurrentSubscriptions() throws Exception {
+		when(priceStreamManager.currentEffectiveSubscriptions()).thenReturn(Map.of(
+			"okx_ws",
+			List.of(
+				new PriceQuery("OFFCHAIN", PriceInstType.SPOT, "BTC", "USDT", null),
+				new PriceQuery("OFFCHAIN", PriceInstType.SWAP, "ETH", "USDT", null)
+			)
+		));
+
+		mockMvc.perform(get("/api/internal/price-ws/subscriptions"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$", hasSize(1)))
+			.andExpect(jsonPath("$[0].provider", is("okx_ws")))
+			.andExpect(jsonPath("$[0].queries", hasSize(2)))
+			.andExpect(jsonPath("$[0].queries[0].instType", is("SPOT")))
+			.andExpect(jsonPath("$[0].queries[0].instId", is("BTC-USDT")))
+			.andExpect(jsonPath("$[0].queries[1].instType", is("SWAP")))
+			.andExpect(jsonPath("$[0].queries[1].instId", is("ETH-USDT")));
 	}
 }

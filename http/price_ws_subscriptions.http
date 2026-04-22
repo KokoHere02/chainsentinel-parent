@@ -1,0 +1,4 @@
+﻿### 当前生效 WS 订阅清单
+GET http://localhost:8080/api/internal/price-ws/subscriptions
+Accept: application/json
+

@@ -29,6 +29,7 @@ public class PriceStreamManager {
 	private final ApplicationEventPublisher eventPublisher;
 	private final MeterRegistry meterRegistry;
 	private final Map<String, String> providerSubscriptionFingerprints = new ConcurrentHashMap<>();
+	private final Map<String, List<PriceQuery>> providerEffectiveSubscriptions = new ConcurrentHashMap<>();
 
 	public PriceStreamManager(
 		List<PriceStreamProvider> providers,
@@ -51,23 +52,28 @@ public class PriceStreamManager {
 			return;
 		}
 		for (PriceStreamProvider provider : providers) {
+			String providerName = provider.name();
 			if (!provider.enabled()) {
+				providerSubscriptionFingerprints.remove(providerName);
+				providerEffectiveSubscriptions.remove(providerName);
 				continue;
 			}
 			List<PriceQuery> supported = filterSupported(provider, queries);
 			if (supported.isEmpty()) {
-				providerSubscriptionFingerprints.remove(provider.name());
+				providerSubscriptionFingerprints.remove(providerName);
+				providerEffectiveSubscriptions.remove(providerName);
 				continue;
 			}
-			String providerName = provider.name();
 			String fingerprint = buildSubscriptionFingerprint(supported);
 			String previous = providerSubscriptionFingerprints.get(providerName);
 			if (fingerprint.equals(previous)) {
+				providerEffectiveSubscriptions.putIfAbsent(providerName, List.copyOf(supported));
 				log.debug("price.ws.subscribe.skip provider={} reason=unchanged count={}", providerName, supported.size());
 				continue;
 			}
 			provider.subscribe(supported);
 			providerSubscriptionFingerprints.put(providerName, fingerprint);
+			providerEffectiveSubscriptions.put(providerName, List.copyOf(supported));
 			log.info("price.ws.subscribe provider={} count={} changed={}", providerName, supported.size(), previous != null);
 		}
 	}
@@ -138,6 +144,15 @@ public class PriceStreamManager {
 			return "";
 		}
 		return input.trim().toLowerCase(Locale.ROOT);
+	}
+
+
+	public Map<String, List<PriceQuery>> currentEffectiveSubscriptions() {
+		Map<String, List<PriceQuery>> snapshot = new ConcurrentHashMap<>();
+		for (Map.Entry<String, List<PriceQuery>> entry : providerEffectiveSubscriptions.entrySet()) {
+			snapshot.put(entry.getKey(), List.copyOf(entry.getValue()));
+		}
+		return snapshot;
 	}
 
 	private void handleQuote(PriceStreamQuote quote) {
