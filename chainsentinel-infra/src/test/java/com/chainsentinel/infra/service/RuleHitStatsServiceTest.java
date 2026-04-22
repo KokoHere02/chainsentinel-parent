@@ -38,7 +38,7 @@ class RuleHitStatsServiceTest {
     AlertRuleEntity rule2 = new AlertRuleEntity();
     ReflectionTestUtils.setField(rule2, "id", 2L);
     rule2.setName("r2");
-    rule2.setType(AlertRuleType.ADDRESS);
+    rule2.setType(AlertRuleType.EVENT);
     rule2.setEnabled(true);
 
     when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(rule1, rule2));
@@ -83,3 +83,4 @@ class RuleHitStatsServiceTest {
     }
   }
 }
+

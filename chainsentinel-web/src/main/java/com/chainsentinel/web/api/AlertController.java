@@ -4,6 +4,7 @@ import com.chainsentinel.core.service.AlertDispatchService;
 import com.chainsentinel.core.service.AlertQueryService;
 import com.chainsentinel.core.service.dto.AlertQuery;
 import com.chainsentinel.core.service.dto.AlertView;
+import com.chainsentinel.web.api.support.ratelimit.RateLimit;
 import java.time.Instant;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +49,13 @@ public class AlertController {
 	}
 
 	@PostMapping("/retry/{id}")
+	@RateLimit(
+		name = "alerts.retry-one",
+		permits = 5,
+		windowSeconds = 10,
+		scope = RateLimit.Scope.IP,
+		message = "Retry too frequent, retry later"
+	)
 	public RetryResponse retry(@PathVariable("id") Long id) {
 		boolean ok = alertDispatchService.retryOne(id);
 		return new RetryResponse(ok);
@@ -62,3 +70,5 @@ public class AlertController {
 	public record RetryResponse(boolean success) {
 	}
 }
+
+

@@ -178,7 +178,7 @@ class WebhookAlertDispatchServiceTest {
 		AlertRuleEntity rule = new AlertRuleEntity();
 		ReflectionTestUtils.setField(rule, "id", 5L);
 		rule.setName("r1");
-		rule.setType(AlertRuleType.ADDRESS);
+		rule.setType(AlertRuleType.EVENT);
 
 		AssetEventEntity event = new AssetEventEntity();
 		ReflectionTestUtils.setField(event, "id", 7L);
@@ -289,3 +289,4 @@ class WebhookAlertDispatchServiceTest {
 		return objectMapper.writeValueAsString(spec);
 	}
 }
+

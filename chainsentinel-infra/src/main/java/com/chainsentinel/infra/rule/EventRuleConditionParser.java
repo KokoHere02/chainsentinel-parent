@@ -107,6 +107,20 @@ public class EventRuleConditionParser {
 		if (!multiValueOp && isMultiValue(item.getValue())) {
 			throw new IllegalArgumentException("value must be scalar for op " + item.getOp().wireValue());
 		}
+		validateAmountValueIfNeeded(item.getField(), item.getValue(), multiValueOp);
+	}
+
+	private void validateAmountValueIfNeeded(EventRuleField field, Object value, boolean multiValueOp) {
+		if (field != EventRuleField.AMOUNT) {
+			return;
+		}
+		if (multiValueOp) {
+			for (Object item : toList(value)) {
+				toAmountValue(item);
+			}
+			return;
+		}
+		toAmountValue(value);
 	}
 
 	private boolean matches(EventRuleConditionItem item, AssetEventEntity event) {

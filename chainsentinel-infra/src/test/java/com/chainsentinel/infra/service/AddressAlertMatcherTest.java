@@ -64,7 +64,7 @@ class AddressAlertMatcherTest {
 
         AlertRuleEntity rule = new AlertRuleEntity();
         ReflectionTestUtils.setField(rule, "id", 1L);
-        rule.setType(AlertRuleType.ADDRESS);
+        rule.setType(AlertRuleType.EVENT);
         rule.setConditionJson("{}");
 
         when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(rule));
@@ -83,7 +83,7 @@ class AddressAlertMatcherTest {
 
         AlertRuleEntity rule = new AlertRuleEntity();
         ReflectionTestUtils.setField(rule, "id", 7L);
-        rule.setType(AlertRuleType.ADDRESS);
+        rule.setType(AlertRuleType.EVENT);
         rule.setSeverity("HIGH");
         rule.setConditionJson("{\"version\":1}");
 
@@ -103,13 +103,13 @@ class AddressAlertMatcherTest {
 
         AlertRuleEntity duplicatedAddressRule = new AlertRuleEntity();
         ReflectionTestUtils.setField(duplicatedAddressRule, "id", 1L);
-        duplicatedAddressRule.setType(AlertRuleType.ADDRESS);
+        duplicatedAddressRule.setType(AlertRuleType.EVENT);
         duplicatedAddressRule.setSeverity("HIGH");
         duplicatedAddressRule.setConditionJson("{\"version\":1}");
 
         AlertRuleEntity newAmountRule = new AlertRuleEntity();
         ReflectionTestUtils.setField(newAmountRule, "id", 2L);
-        newAmountRule.setType(AlertRuleType.AMOUNT);
+        newAmountRule.setType(AlertRuleType.EVENT);
         newAmountRule.setSeverity("LOW");
         newAmountRule.setConditionJson("{\"version\":1}");
 
@@ -139,7 +139,7 @@ class AddressAlertMatcherTest {
 
         AlertRuleEntity frequencyRule = new AlertRuleEntity();
         ReflectionTestUtils.setField(frequencyRule, "id", 3L);
-        frequencyRule.setType(AlertRuleType.FREQUENCY);
+        frequencyRule.setType(null);
         frequencyRule.setConditionJson("{\"version\":1}");
 
         when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(frequencyRule));
@@ -157,7 +157,7 @@ class AddressAlertMatcherTest {
 
         AlertRuleEntity badRule = new AlertRuleEntity();
         ReflectionTestUtils.setField(badRule, "id", 3L);
-        badRule.setType(AlertRuleType.AMOUNT);
+        badRule.setType(AlertRuleType.EVENT);
         badRule.setConditionJson("bad-json");
 
         when(alertRuleRepository.findByEnabledTrue()).thenReturn(List.of(badRule));
@@ -168,7 +168,7 @@ class AddressAlertMatcherTest {
         verify(alertEventRepository, never()).save(any(AlertEventEntity.class));
         double count = meterRegistry
                 .get("rule_eval_fail_total")
-                .tags("ruleId", "3", "type", "AMOUNT", "reason", "invalid")
+                .tags("ruleId", "3", "type", "EVENT", "reason", "invalid")
                 .counter()
                 .count();
         assertEquals(1.0, count);
@@ -181,12 +181,12 @@ class AddressAlertMatcherTest {
 
         AlertRuleEntity errorRule = new AlertRuleEntity();
         ReflectionTestUtils.setField(errorRule, "id", 5L);
-        errorRule.setType(AlertRuleType.ADDRESS);
+        errorRule.setType(AlertRuleType.EVENT);
         errorRule.setConditionJson("{\"version\":1}");
 
         AlertRuleEntity matchedRule = new AlertRuleEntity();
         ReflectionTestUtils.setField(matchedRule, "id", 6L);
-        matchedRule.setType(AlertRuleType.AMOUNT);
+        matchedRule.setType(AlertRuleType.EVENT);
         matchedRule.setSeverity("HIGH");
         matchedRule.setConditionJson("{\"version\":2}");
 
@@ -200,10 +200,11 @@ class AddressAlertMatcherTest {
         verify(alertEventRepository).save(any(AlertEventEntity.class));
         double count = meterRegistry
                 .get("rule_eval_fail_total")
-                .tags("ruleId", "5", "type", "ADDRESS", "reason", "error")
+                .tags("ruleId", "5", "type", "EVENT", "reason", "error")
                 .counter()
                 .count();
         assertEquals(1.0, count);
     }
 }
+
 

@@ -57,7 +57,7 @@ class AmountRuleExecutionFlowTest {
 
         AlertRuleEntity amountRule = new AlertRuleEntity();
         ReflectionTestUtils.setField(amountRule, "id", 9L);
-        amountRule.setType(AlertRuleType.AMOUNT);
+        amountRule.setType(AlertRuleType.EVENT);
         amountRule.setSeverity("CRITICAL");
         amountRule.setConditionJson(parser.serialize(spec));
 
@@ -82,3 +82,4 @@ class AmountRuleExecutionFlowTest {
         assertEquals("PENDING", alert.getSendStatus());
     }
 }
+

@@ -35,7 +35,7 @@ public class RuleConditionJsonParser {
 			throw new IllegalArgumentException("condition is required");
 		}
 		return switch (type) {
-			case ADDRESS, AMOUNT -> eventRuleConditionParser.serialize(toEventRuleSpec(condition));
+			case EVENT -> eventRuleConditionParser.serialize(toEventRuleSpec(condition));
 			case PRICE_THRESHOLD -> priceRuleConditionParser.serialize(toNormalizedPriceRuleSpec(condition));
 			default -> throw new IllegalArgumentException("Unsupported rule type for parser: " + type);
 		};

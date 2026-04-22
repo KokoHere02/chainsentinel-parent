@@ -92,6 +92,20 @@ class EventRuleConditionParserTest {
         event.setAmount("2");
 
         assertThrows(IllegalArgumentException.class, () -> parser.matches(spec, event));
+        assertThrows(IllegalArgumentException.class, () -> parser.serialize(spec));
+    }
+
+    @Test
+    void shouldRejectInvalidAmountValueInInOperator() {
+        EventRuleSpec spec = new EventRuleSpec(
+                1,
+                "EVENT",
+                new EventRuleCondition(List.of(
+                        new EventRuleConditionItem(EventRuleField.AMOUNT, EventRuleOperator.IN, List.of("100", "1.5"))
+                ))
+        );
+
+        assertThrows(IllegalArgumentException.class, () -> parser.serialize(spec));
     }
 
     @Test

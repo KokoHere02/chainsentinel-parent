@@ -138,7 +138,7 @@ public class RuleDebugController {
 	private MatchDetail evaluate(AlertRuleView rule, JsonNode sample) {
 		return switch (rule.type()) {
 			case PRICE_THRESHOLD -> matchPriceRule(rule, sample);
-			case ADDRESS, AMOUNT -> matchEventRule(rule, sample);
+			case EVENT -> matchEventRule(rule, sample);
 			default -> throw new IllegalArgumentException("Unsupported rule type: " + rule.type());
 		};
 	}

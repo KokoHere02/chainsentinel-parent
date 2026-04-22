@@ -127,7 +127,7 @@ class RuleDebugControllerTest {
 			.thenReturn(new AlertRuleView(
 				101L,
 				"address-rule",
-				AlertRuleType.ADDRESS,
+				AlertRuleType.EVENT,
 				"""
 				{"version":1,"type":"EVENT","condition":{"all":[{"field":"chain","op":"eq","value":"ETH"},{"field":"to_address","op":"eq","value":"0xabc"}]}}
 				""",
@@ -286,3 +286,4 @@ class RuleDebugControllerTest {
 			.andExpect(jsonPath("$.code", is("VALIDATION_ERROR")));
 	}
 }
+

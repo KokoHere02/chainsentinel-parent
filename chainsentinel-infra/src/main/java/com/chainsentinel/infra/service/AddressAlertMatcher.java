@@ -77,7 +77,7 @@ public class AddressAlertMatcher {
 	}
 
 	private boolean isSupportedRuleType(AlertRuleType type) {
-		return type == AlertRuleType.ADDRESS || type == AlertRuleType.AMOUNT;
+		return type == AlertRuleType.EVENT;
 	}
 
 	private boolean isMatched(AlertRuleEntity rule, AssetEventEntity event) {

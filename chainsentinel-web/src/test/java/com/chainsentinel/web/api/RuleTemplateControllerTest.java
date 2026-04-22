@@ -28,8 +28,8 @@ class RuleTemplateControllerTest {
 			.andExpect(jsonPath("$[0].key", is("PRICE_BREAKOUT")))
 			.andExpect(jsonPath("$[0].type", is("PRICE_THRESHOLD")))
 			.andExpect(jsonPath("$[1].key", is("ADDRESS_LARGE_TRANSFER")))
-			.andExpect(jsonPath("$[1].type", is("AMOUNT")))
+			.andExpect(jsonPath("$[1].type", is("EVENT")))
 			.andExpect(jsonPath("$[2].key", is("CONTRACT_INTERACTION")))
-			.andExpect(jsonPath("$[2].type", is("ADDRESS")));
+			.andExpect(jsonPath("$[2].type", is("EVENT")));
 	}
 }

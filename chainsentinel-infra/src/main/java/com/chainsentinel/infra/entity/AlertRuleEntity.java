@@ -1,10 +1,10 @@
 package com.chainsentinel.infra.entity;
 
 import com.chainsentinel.core.model.AlertRuleType;
+import com.chainsentinel.infra.entity.converter.AlertRuleTypeConverter;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -21,8 +21,8 @@ public class AlertRuleEntity {
 	@Column(name = "name", nullable = false, length = 128)
 	private String name;
 
-	@Enumerated(EnumType.STRING)
 	@Column(name = "type", nullable = false, length = 32)
+	@Convert(converter = AlertRuleTypeConverter.class)
 	private AlertRuleType type;
 
 	@Column(name = "condition_json", nullable = false, columnDefinition = "json")
