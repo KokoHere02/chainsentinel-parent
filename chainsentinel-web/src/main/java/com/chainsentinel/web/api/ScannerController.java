@@ -32,12 +32,11 @@ public class ScannerController {
 		message = "Scanner run too frequent, retry later"
 	)
 	public ScanRunResponse run(
-		@RequestParam(name = "times", defaultValue = "1") @Min(1) Integer times,
-		@RequestParam(name = "full", defaultValue = "false") Boolean full
+		@RequestParam(name = "times", defaultValue = "1") @Min(1) Integer times
 	) {
 		int inserted = 0;
 		for (int i = 0; i < times; i++) {
-			inserted += scannerService.runOnce(Boolean.TRUE.equals(full));
+			inserted += scannerService.runOnce();
 		}
 		return new ScanRunResponse(inserted, Instant.now());
 	}

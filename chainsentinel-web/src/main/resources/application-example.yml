@@ -25,15 +25,17 @@ chainsentinel:
       key-base64: YOUR_BASE64_KEY
   scanner:
     enabled: true
-    chain: ETH
-    network: sepolia
-    rpc-url: https://your-eth-rpc-endpoint
     window-size: 2
-    confirm-required: 12
     initial-start-block: 0
     rpc-retry-max: 3
     rpc-retry-backoff-ms: 300
-    full-eth-scan: false
+  holding:
+    enabled: true
+    interval-ms: 1800000
+    initial-delay-ms: 15000
+    native-token-contract: NATIVE
+    native-token-symbol: ETH
+    native-token-decimals: 18
   alert:
     enabled: true
     webhook-url: http://localhost:8080/api/alerts/handler

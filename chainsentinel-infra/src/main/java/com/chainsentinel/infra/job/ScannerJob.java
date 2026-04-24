@@ -3,7 +3,6 @@ package com.chainsentinel.infra.job;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.chainsentinel.core.service.ScannerService;
-import com.chainsentinel.infra.config.ScannerProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,12 +17,10 @@ public class ScannerJob {
 	private static final Logger log = LoggerFactory.getLogger(ScannerJob.class);
 
 	private final ScannerService scannerService;
-	private final ScannerProperties scannerProperties;
 	private final AtomicBoolean running = new AtomicBoolean(false);
 
-	public ScannerJob(ScannerService scannerService, ScannerProperties scannerProperties) {
+	public ScannerJob(ScannerService scannerService) {
 		this.scannerService = scannerService;
-		this.scannerProperties = scannerProperties;
 	}
 
 //	@Scheduled(
@@ -36,9 +33,8 @@ public class ScannerJob {
 			return;
 		}
 		try {
-			boolean full = scannerProperties.isFullEthScan();
-			int inserted = scannerService.runOnce(false);
-			log.info("Scanner job finished: full={}, inserted={}", full, inserted);
+			int inserted = scannerService.runOnce();
+			log.info("Scanner job finished: inserted={}", inserted);
 		} catch (Exception ex) {
 			log.error("Scanner job failed", ex);
 		} finally {
@@ -47,4 +43,3 @@ public class ScannerJob {
 	}
 
 }
-

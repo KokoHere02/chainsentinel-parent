@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.math.BigInteger;
 import java.time.Instant;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -18,10 +17,12 @@ import com.chainsentinel.infra.config.ScannerProperties;
 import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.entity.ChainConfigEntity;
 import com.chainsentinel.infra.entity.MonitorAddressEntity;
+import com.chainsentinel.infra.entity.MonitorAddressScopeEntity;
 import com.chainsentinel.infra.entity.ScanCheckpointEntity;
 import com.chainsentinel.infra.repository.AssetEventRepository;
 import com.chainsentinel.infra.repository.ChainConfigRepository;
 import com.chainsentinel.infra.repository.MonitorAddressRepository;
+import com.chainsentinel.infra.repository.MonitorAddressScopeRepository;
 import com.chainsentinel.infra.repository.ScanCheckpointRepository;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -60,6 +61,7 @@ public class EthereumScannerService implements ScannerService {
 	private final ScanCheckpointRepository scanCheckpointRepository;
 	private final AssetEventRepository assetEventRepository;
 	private final MonitorAddressRepository monitorAddressRepository;
+	private final MonitorAddressScopeRepository monitorAddressScopeRepository;
 	private final AddressAlertMatcher addressAlertMatcher;
 	private final MeterRegistry meterRegistry;
 	private final ChainConfigRpcUrlCodec chainConfigRpcUrlCodec;
@@ -73,6 +75,7 @@ public class EthereumScannerService implements ScannerService {
 		ScanCheckpointRepository scanCheckpointRepository,
 		AssetEventRepository assetEventRepository,
 		MonitorAddressRepository monitorAddressRepository,
+		MonitorAddressScopeRepository monitorAddressScopeRepository,
 		AddressAlertMatcher addressAlertMatcher,
 		MeterRegistry meterRegistry,
 		ChainConfigRpcUrlCodec chainConfigRpcUrlCodec
@@ -82,6 +85,7 @@ public class EthereumScannerService implements ScannerService {
 		this.scanCheckpointRepository = scanCheckpointRepository;
 		this.assetEventRepository = assetEventRepository;
 		this.monitorAddressRepository = monitorAddressRepository;
+		this.monitorAddressScopeRepository = monitorAddressScopeRepository;
 		this.addressAlertMatcher = addressAlertMatcher;
 		this.meterRegistry = meterRegistry;
 		this.chainConfigRpcUrlCodec = chainConfigRpcUrlCodec;
@@ -96,36 +100,41 @@ public class EthereumScannerService implements ScannerService {
 	}
 
 	@Override
-	public int runOnce(boolean full) {
-		Set<String> monitorChains = resolveMonitoredChains();
-		if (monitorChains.isEmpty()) {
-			log.info("No enabled monitor addresses, skip scanning");
+	public int runOnce() {
+		List<MonitorAddressScopeEntity> enabledScopes = monitorAddressScopeRepository.findByEnabledTrue();
+		if (enabledScopes.isEmpty()) {
+			log.info("No enabled monitor scopes, skip scanning");
+			return 0;
+		}
+		Map<Long, MonitorAddressEntity> enabledAddressMap = resolveEnabledAddressMap(enabledScopes);
+		if (enabledAddressMap.isEmpty()) {
+			log.info("No enabled monitor addresses for scopes, skip scanning");
+			return 0;
+		}
+
+		List<ChainConfigEntity> configs = chainConfigRepository.findByEnabledTrue();
+		if (configs.isEmpty()) {
+			log.info("No enabled chain_config, skip scanning");
 			return 0;
 		}
 
 		int totalInserted = 0;
-		for (String chain : monitorChains) {
-			List<ChainConfigEntity> configs = chainConfigRepository.findByChainAndEnabledTrue(chain);
-			if (configs.isEmpty()) {
-				log.info("No enabled chain_config for chain {}, skip", chain);
+		for (ChainConfigEntity cfg : configs) {
+			String rpcUrl = chainConfigRpcUrlCodec.decryptIfNeeded(cfg.getRpcUrl(), cfg.getChain(),
+				cfg.getNetwork());
+			if (!StringUtils.hasText(rpcUrl)) {
+				log.warn("Skip chain {}-{}: rpcUrl is empty", cfg.getChain(), cfg.getNetwork());
 				continue;
 			}
-			for (ChainConfigEntity cfg : configs) {
-				String rpcUrl = chainConfigRpcUrlCodec.decryptIfNeeded(cfg.getRpcUrl(), cfg.getChain(),
-					cfg.getNetwork());
-				if (!StringUtils.hasText(rpcUrl)) {
-					log.warn("Skip chain {}-{}: rpcUrl is empty", cfg.getChain(), cfg.getNetwork());
-					continue;
-				}
-				cfg.setRpcUrl(rpcUrl);
-				ChainRuntimeConfig runtime = toRuntimeConfig(cfg);
-				totalInserted += runOnceForRuntime(runtime, full);
-			}
+			cfg.setRpcUrl(rpcUrl);
+			ChainRuntimeConfig runtime = toRuntimeConfig(cfg);
+			RuntimeWatchers watchers = resolveWatchersForRuntime(runtime, enabledScopes, enabledAddressMap);
+			totalInserted += runOnceForRuntime(runtime, watchers);
 		}
 		return totalInserted;
 	}
 
-	private int runOnceForRuntime(ChainRuntimeConfig runtime, boolean full) {
+	private int runOnceForRuntime(ChainRuntimeConfig runtime, RuntimeWatchers watchers) {
 		Web3j web3j = Web3j.build(new HttpService(runtime.rpcUrl()));
 		try {
 			long latest = rpcCallWithRetry("eth_blockNumber", () ->
@@ -141,15 +150,15 @@ public class EthereumScannerService implements ScannerService {
 			Map<Long, EthBlock.Block> blockCache = new HashMap<>();
 			inserted += ingestErc20TransferLogs(web3j, latest, window.fromBlock(), window.toBlock(), blockCache,
 				runtime,
-				full);
+				watchers.watchAddressTopics());
 			inserted += ingestEthTransfers(web3j, latest, window.fromBlock(), window.toBlock(), blockCache, runtime,
-				full);
+				watchers.watchAddressSet());
 
 			saveCheckpoint(window.toBlock(), runtime);
 			long lagBlocks = Math.max(0L, latest - window.toBlock());
 			scannerLagBlocks.set(lagBlocks);
-			log.info("Scan completed: chain={}-{}, window=[{}-{}], inserted={}, full={}",
-				runtime.chain(), runtime.network(), window.fromBlock(), window.toBlock(), inserted, full);
+			log.info("Scan completed: chain={}-{}, window=[{}-{}], inserted={}",
+				runtime.chain(), runtime.network(), window.fromBlock(), window.toBlock(), inserted);
 			return inserted;
 		} catch (Exception e) {
 			log.error("Scan failed for chain {}-{}", runtime.chain(), runtime.network(), e);
@@ -166,16 +175,6 @@ public class EthereumScannerService implements ScannerService {
 			cfg.getRpcUrl(),
 			cfg.getConfirmRequired()
 		);
-	}
-
-	private Set<String> resolveMonitoredChains() {
-		Set<String> chains = new HashSet<>();
-		for (MonitorAddressEntity item : monitorAddressRepository.findByEnabledTrue()) {
-			if (StringUtils.hasText(item.getChain())) {
-				chains.add(item.getChain().trim().toUpperCase());
-			}
-		}
-		return chains;
 	}
 
 	private ScanWindow resolveWindow(long latestBlock, ChainRuntimeConfig runtime) {
@@ -209,13 +208,8 @@ public class EthereumScannerService implements ScannerService {
 		long to,
 		Map<Long, EthBlock.Block> blockCache,
 		ChainRuntimeConfig runtime,
-		boolean full
+		List<String> watchAddressTopics
 	) throws IOException {
-		if (full) {
-			return ingestErc20TransferLogsFullRange(web3j, latest, from, to, blockCache, runtime);
-		}
-
-		List<String> watchAddressTopics = resolveWatchAddressTopics(runtime.chain());
 		if (watchAddressTopics.isEmpty()) {
 			log.info("No enabled monitor addresses for chain {}, skip ERC20 log scan", runtime.chain());
 			return 0;
@@ -229,41 +223,6 @@ public class EthereumScannerService implements ScannerService {
 				watchAddressTopic);
 		}
 		return inserted;
-	}
-
-	private int ingestErc20TransferLogsFullRange(
-		Web3j web3j,
-		long latest,
-		long from,
-		long to,
-		Map<Long, EthBlock.Block> blockCache,
-		ChainRuntimeConfig runtime
-	) throws IOException {
-		if (from > to) {
-			return 0;
-		}
-
-		EthFilter filter = new EthFilter(
-			DefaultBlockParameter.valueOf(BigInteger.valueOf(from)),
-			DefaultBlockParameter.valueOf(BigInteger.valueOf(to)),
-			List.of()
-		);
-		filter.addSingleTopic(ERC20_TRANSFER_TOPIC);
-		EthLog logs = rpcCallWithRetry("eth_getLogs", () -> web3j.ethGetLogs(filter).send());
-
-		if (isTooManyLogsResponse(logs)) {
-			if (from == to) {
-				log.warn("Skip block {} for ERC20 logs due to provider result-size limit: {}",
-					from, logs.getError() == null ? "unknown" : logs.getError().getMessage());
-				return 0;
-			}
-			long mid = from + (to - from) / 2;
-			int left = ingestErc20TransferLogsFullRange(web3j, latest, from, mid, blockCache, runtime);
-			int right = ingestErc20TransferLogsFullRange(web3j, latest, mid + 1, to, blockCache, runtime);
-			return left + right;
-		}
-
-		return ingestErc20TransferLogResults(logs.getLogs(), web3j, latest, blockCache, runtime);
 	}
 
 	private int ingestErc20TransferLogsByAddressRange(
@@ -374,10 +333,9 @@ public class EthereumScannerService implements ScannerService {
 		long to,
 		Map<Long, EthBlock.Block> blockCache,
 		ChainRuntimeConfig runtime,
-		boolean full
+		Set<String> watchAddressSet
 	) throws IOException {
-		Set<String> watchAddressSet = resolveWatchAddressSet(runtime.chain());
-		if (!full && watchAddressSet.isEmpty()) {
+		if (watchAddressSet.isEmpty()) {
 			log.info("No enabled monitor addresses for chain {}, skip ETH transfer scan", runtime.chain());
 			return 0;
 		}
@@ -391,7 +349,7 @@ public class EthereumScannerService implements ScannerService {
 				if (tx.getValue() == null || tx.getValue().signum() <= 0 || tx.getTo() == null) {
 					continue;
 				}
-				if (!full && !isWatchedAddressTransfer(tx, watchAddressSet)) {
+				if (!isWatchedAddressTransfer(tx, watchAddressSet)) {
 					continue;
 				}
 
@@ -422,24 +380,56 @@ public class EthereumScannerService implements ScannerService {
 		return inserted;
 	}
 
-	private List<String> resolveWatchAddressTopics(String chain) {
-		return monitorAddressRepository.findByChainAndEnabledTrue(chain).stream()
-			.map(MonitorAddressEntity::getAddress)
-			.map(this::addressToTopic)
-			.filter(StringUtils::hasText)
-			.distinct()
-			.toList();
-	}
-
-	private Set<String> resolveWatchAddressSet(String chain) {
-		Set<String> watchAddresses = new HashSet<>();
-		for (MonitorAddressEntity item : monitorAddressRepository.findByChainAndEnabledTrue(chain)) {
-			String normalized = normalizeAddress(item.getAddress());
-			if (normalized != null) {
-				watchAddresses.add(normalized);
+	private Map<Long, MonitorAddressEntity> resolveEnabledAddressMap(List<MonitorAddressScopeEntity> scopes) {
+		Set<Long> addressIds = new java.util.HashSet<>();
+		for (MonitorAddressScopeEntity scope : scopes) {
+			if (scope.getMonitorAddressId() != null) {
+				addressIds.add(scope.getMonitorAddressId());
 			}
 		}
-		return watchAddresses;
+		if (addressIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<Long, MonitorAddressEntity> map = new HashMap<>();
+		for (MonitorAddressEntity address : monitorAddressRepository.findByIdInAndEnabledTrue(List.copyOf(addressIds))) {
+			map.put(address.getId(), address);
+		}
+		return map;
+	}
+
+	private RuntimeWatchers resolveWatchersForRuntime(
+		ChainRuntimeConfig runtime,
+		List<MonitorAddressScopeEntity> enabledScopes,
+		Map<Long, MonitorAddressEntity> enabledAddressMap
+	) {
+		Set<String> addressSet = new java.util.HashSet<>();
+		Set<String> topicSet = new java.util.HashSet<>();
+		for (MonitorAddressScopeEntity scope : enabledScopes) {
+			if (!equalsIgnoreCase(scope.getChain(), runtime.chain()) || !equalsIgnoreCase(scope.getNetwork(), runtime.network())) {
+				continue;
+			}
+			MonitorAddressEntity addressEntity = enabledAddressMap.get(scope.getMonitorAddressId());
+			if (addressEntity == null) {
+				continue;
+			}
+			String normalizedAddress = normalizeAddress(addressEntity.getAddress());
+			if (normalizedAddress == null) {
+				continue;
+			}
+			addressSet.add(normalizedAddress);
+			String topic = addressToTopic(normalizedAddress);
+			if (StringUtils.hasText(topic)) {
+				topicSet.add(topic);
+			}
+		}
+		return new RuntimeWatchers(List.copyOf(topicSet), addressSet);
+	}
+
+	private boolean equalsIgnoreCase(String left, String right) {
+		if (!StringUtils.hasText(left) || !StringUtils.hasText(right)) {
+			return false;
+		}
+		return left.trim().equalsIgnoreCase(right.trim());
 	}
 
 	private boolean isWatchedAddressTransfer(Transaction tx, Set<String> watchAddressSet) {
@@ -654,12 +644,10 @@ public class EthereumScannerService implements ScannerService {
 	private record ChainRuntimeConfig(String chain, String network, String rpcUrl, int confirmRequired) {
 	}
 
+	private record RuntimeWatchers(List<String> watchAddressTopics, Set<String> watchAddressSet) {
+	}
+
 }
-
-
-
-
-
 
 
 
