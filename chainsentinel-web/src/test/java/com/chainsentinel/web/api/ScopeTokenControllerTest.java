@@ -9,8 +9,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.chainsentinel.core.service.MonitorAddressService;
-import com.chainsentinel.core.service.dto.MonitorAddressView;
+import com.chainsentinel.core.service.MonitorScopeTokenService;
+import com.chainsentinel.core.service.dto.MonitorScopeTokenView;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,41 +21,43 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 @ExtendWith(MockitoExtension.class)
-class AddressControllerTest {
+class ScopeTokenControllerTest {
 
 	@Mock
-	private MonitorAddressService monitorAddressService;
+	private MonitorScopeTokenService monitorScopeTokenService;
 
 	private MockMvc mockMvc;
 
 	@BeforeEach
 	void setUp() {
-		AddressController controller = new AddressController(monitorAddressService);
+		ScopeTokenController controller = new ScopeTokenController(monitorScopeTokenService);
 		mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 	}
 
 	@Test
-	void shouldListAddresses() throws Exception {
-		when(monitorAddressService.list(eq("0xabc"), eq(true), eq(30)))
+	void shouldListScopeTokens() throws Exception {
+		when(monitorScopeTokenService.list(eq(1L), eq("eth"), eq(true), eq(20)))
 			.thenReturn(List.of(
-				new MonitorAddressView(1L, "0xabc1", "wallet-1", true),
-				new MonitorAddressView(2L, "0xabc2", "wallet-2", true)
+				new MonitorScopeTokenView(1L, 1L, "NATIVE", "ETH", 18, true),
+				new MonitorScopeTokenView(2L, 1L, "0xdac17f958d2ee523a2206206994597c13d831ec7", "USDT", 6, true)
 			));
 
-		mockMvc.perform(get("/api/addresses")
-				.param("q", "0xabc")
+		mockMvc.perform(get("/api/scope-tokens")
+				.param("monitorScopeId", "1")
+				.param("q", "eth")
 				.param("enabled", "true")
-				.param("limit", "30"))
+				.param("limit", "20"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$", hasSize(2)))
-			.andExpect(jsonPath("$[0].address", is("0xabc1")));
+			.andExpect(jsonPath("$[0].tokenContract", is("NATIVE")));
 
-		verify(monitorAddressService).list("0xabc", true, 30);
+		verify(monitorScopeTokenService).list(1L, "eth", true, 20);
 	}
 
 	@Test
 	void shouldReturnBadRequestWhenLimitInvalid() throws Exception {
-		mockMvc.perform(get("/api/addresses").param("limit", "0"))
+		mockMvc.perform(get("/api/scope-tokens").param("limit", "0"))
 			.andExpect(status().isBadRequest());
 	}
 }
+

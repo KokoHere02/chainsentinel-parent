@@ -15,9 +15,6 @@ public class MonitorAddressEntity {
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	private Long id;
 
-	@Column(name = "chain_name", nullable = false, length = 32)
-	private String chain;
-
 	@Column(name = "address", nullable = false, length = 64)
 	private String address;
 
@@ -29,14 +26,6 @@ public class MonitorAddressEntity {
 
 	public Long getId() {
 		return id;
-	}
-
-	public String getChain() {
-		return chain;
-	}
-
-	public void setChain(String chain) {
-		this.chain = chain;
 	}
 
 	public String getAddress() {

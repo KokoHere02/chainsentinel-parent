@@ -9,8 +9,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.chainsentinel.core.service.MonitorAddressService;
-import com.chainsentinel.core.service.dto.MonitorAddressView;
+import com.chainsentinel.core.service.AddressHoldingQueryService;
+import com.chainsentinel.core.service.dto.AddressTokenHoldingView;
+import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,41 +22,66 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 @ExtendWith(MockitoExtension.class)
-class AddressControllerTest {
+class HoldingControllerTest {
 
 	@Mock
-	private MonitorAddressService monitorAddressService;
+	private AddressHoldingQueryService addressHoldingQueryService;
 
 	private MockMvc mockMvc;
 
 	@BeforeEach
 	void setUp() {
-		AddressController controller = new AddressController(monitorAddressService);
+		HoldingController controller = new HoldingController(addressHoldingQueryService);
 		mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 	}
 
 	@Test
-	void shouldListAddresses() throws Exception {
-		when(monitorAddressService.list(eq("0xabc"), eq(true), eq(30)))
+	void shouldListHoldings() throws Exception {
+		when(addressHoldingQueryService.list(eq("ETH"), eq("mainnet"), eq("0xabc"), eq(30)))
 			.thenReturn(List.of(
-				new MonitorAddressView(1L, "0xabc1", "wallet-1", true),
-				new MonitorAddressView(2L, "0xabc2", "wallet-2", true)
+				new AddressTokenHoldingView(
+					1L,
+					1L,
+					"ETH",
+					"mainnet",
+					"0xabc",
+					"NATIVE",
+					"ETH",
+					18,
+					"1000000000000000000",
+					Instant.parse("2026-04-24T00:00:00Z")
+				),
+				new AddressTokenHoldingView(
+					2L,
+					2L,
+					"ETH",
+					"mainnet",
+					"0xabc",
+					"NATIVE",
+					"ETH",
+					18,
+					"2000000000000000000",
+					Instant.parse("2026-04-24T00:10:00Z")
+				)
 			));
 
-		mockMvc.perform(get("/api/addresses")
-				.param("q", "0xabc")
-				.param("enabled", "true")
+		mockMvc.perform(get("/api/holdings")
+				.param("chain", "ETH")
+				.param("network", "mainnet")
+				.param("address", "0xabc")
 				.param("limit", "30"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$", hasSize(2)))
-			.andExpect(jsonPath("$[0].address", is("0xabc1")));
+			.andExpect(jsonPath("$[0].tokenContract", is("NATIVE")))
+			.andExpect(jsonPath("$[0].balanceRaw", is("1000000000000000000")));
 
-		verify(monitorAddressService).list("0xabc", true, 30);
+		verify(addressHoldingQueryService).list("ETH", "mainnet", "0xabc", 30);
 	}
 
 	@Test
 	void shouldReturnBadRequestWhenLimitInvalid() throws Exception {
-		mockMvc.perform(get("/api/addresses").param("limit", "0"))
+		mockMvc.perform(get("/api/holdings").param("limit", "0"))
 			.andExpect(status().isBadRequest());
 	}
 }
+

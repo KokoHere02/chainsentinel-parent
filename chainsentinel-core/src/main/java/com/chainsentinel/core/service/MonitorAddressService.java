@@ -8,7 +8,5 @@ public interface MonitorAddressService {
 
 	MonitorAddressView upsert(MonitorAddressUpsertCommand command);
 
-	List<MonitorAddressView> search(String chain, String keyword, int limit, boolean enabledOnly);
-
-	List<MonitorAddressView> list(String chain, String keyword, Boolean enabled, int limit);
+	List<MonitorAddressView> list(String keyword, Boolean enabled, int limit);
 }

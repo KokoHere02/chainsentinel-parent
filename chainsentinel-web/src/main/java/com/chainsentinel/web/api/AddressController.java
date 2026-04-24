@@ -30,7 +30,6 @@ public class AddressController {
 	@PostMapping
 	public MonitorAddressView upsert(@RequestBody @Valid AddressUpsertRequest request) {
 		return monitorAddressService.upsert(new MonitorAddressUpsertCommand(
-			request.chain(),
 			request.address(),
 			request.tag(),
 			request.enabled()
@@ -40,31 +39,16 @@ public class AddressController {
 	@GetMapping
 	public List<MonitorAddressView> list(
 		@RequestParam(name = "q", required = false) String keyword,
-		@RequestParam(name = "chain", required = false) String chain,
 		@RequestParam(name = "enabled", required = false) Boolean enabled,
 		@RequestParam(name = "limit", defaultValue = "50") int limit
 	) {
 		if (limit < 1 || limit > 200) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 200");
 		}
-		return monitorAddressService.list(chain, keyword, enabled, limit);
-	}
-
-	@GetMapping("/search")
-	public List<MonitorAddressView> search(
-		@RequestParam(name = "q", required = false) String keyword,
-		@RequestParam(name = "chain", required = false) String chain,
-		@RequestParam(name = "limit", defaultValue = "20") int limit,
-		@RequestParam(name = "enabledOnly", defaultValue = "true") boolean enabledOnly
-	) {
-		if (limit < 1 || limit > 200) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 200");
-		}
-		return monitorAddressService.search(chain, keyword, limit, enabledOnly);
+		return monitorAddressService.list(keyword, enabled, limit);
 	}
 
 	public record AddressUpsertRequest(
-		@NotBlank String chain,
 		@NotBlank String address,
 		String tag,
 		Boolean enabled

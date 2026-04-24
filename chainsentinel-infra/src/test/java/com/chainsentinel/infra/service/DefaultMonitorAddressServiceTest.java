@@ -10,7 +10,11 @@ import static org.mockito.Mockito.when;
 import com.chainsentinel.core.service.dto.MonitorAddressUpsertCommand;
 import com.chainsentinel.core.service.dto.MonitorAddressView;
 import com.chainsentinel.infra.entity.MonitorAddressEntity;
+import com.chainsentinel.infra.entity.MonitorAddressScopeEntity;
+import com.chainsentinel.infra.entity.MonitorScopeTokenEntity;
 import com.chainsentinel.infra.repository.MonitorAddressRepository;
+import com.chainsentinel.infra.repository.MonitorAddressScopeRepository;
+import com.chainsentinel.infra.repository.MonitorScopeTokenRepository;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -27,33 +31,38 @@ class DefaultMonitorAddressServiceTest {
 
 	@Mock
 	private MonitorAddressRepository monitorAddressRepository;
+	@Mock
+	private MonitorAddressScopeRepository monitorAddressScopeRepository;
+	@Mock
+	private MonitorScopeTokenRepository monitorScopeTokenRepository;
 
 	@Test
 	void shouldNormalizeAndUpdateExistingAddress() {
 		MonitorAddressEntity existing = new MonitorAddressEntity();
 		ReflectionTestUtils.setField(existing, "id", 1L);
-		existing.setChain("ETH");
 		existing.setAddress("0xabc");
 		existing.setEnabled(true);
 
-		when(monitorAddressRepository.findByChainAndAddress("ETH", "0xabc")).thenReturn(Optional.of(existing));
+		when(monitorAddressRepository.findByAddress("0xabc")).thenReturn(Optional.of(existing));
 		when(monitorAddressRepository.save(any(MonitorAddressEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-		DefaultMonitorAddressService service = new DefaultMonitorAddressService(monitorAddressRepository);
-		MonitorAddressUpsertCommand command = new MonitorAddressUpsertCommand(" eth ", " 0xAbC ", "vip", null);
+		DefaultMonitorAddressService service = new DefaultMonitorAddressService(
+			monitorAddressRepository,
+			monitorAddressScopeRepository,
+			monitorScopeTokenRepository
+		);
+		MonitorAddressUpsertCommand command = new MonitorAddressUpsertCommand(" 0xAbC ", "vip", null);
 
 		MonitorAddressView view = service.upsert(command);
 
 		ArgumentCaptor<MonitorAddressEntity> captor = ArgumentCaptor.forClass(MonitorAddressEntity.class);
 		verify(monitorAddressRepository).save(captor.capture());
 		MonitorAddressEntity saved = captor.getValue();
-		assertEquals("ETH", saved.getChain());
 		assertEquals("0xabc", saved.getAddress());
 		assertEquals("vip", saved.getTag());
 		assertFalse(saved.getEnabled());
 
 		assertEquals(1L, view.id());
-		assertEquals("ETH", view.chain());
 		assertEquals("0xabc", view.address());
 		assertEquals("vip", view.tag());
 		assertFalse(view.enabled());
@@ -61,20 +70,23 @@ class DefaultMonitorAddressServiceTest {
 
 	@Test
 	void shouldCreateNewAddressWhenNotExist() {
-		when(monitorAddressRepository.findByChainAndAddress("BSC", "0xdef")).thenReturn(Optional.empty());
+		when(monitorAddressRepository.findByAddress("0xdef")).thenReturn(Optional.empty());
 		when(monitorAddressRepository.save(any(MonitorAddressEntity.class))).thenAnswer(invocation -> {
 			MonitorAddressEntity entity = invocation.getArgument(0);
 			ReflectionTestUtils.setField(entity, "id", 2L);
 			return entity;
 		});
 
-		DefaultMonitorAddressService service = new DefaultMonitorAddressService(monitorAddressRepository);
-		MonitorAddressUpsertCommand command = new MonitorAddressUpsertCommand("bsc", "0xDeF", "new", true);
+		DefaultMonitorAddressService service = new DefaultMonitorAddressService(
+			monitorAddressRepository,
+			monitorAddressScopeRepository,
+			monitorScopeTokenRepository
+		);
+		MonitorAddressUpsertCommand command = new MonitorAddressUpsertCommand("0xDeF", "new", true);
 
 		MonitorAddressView view = service.upsert(command);
 
 		assertEquals(2L, view.id());
-		assertEquals("BSC", view.chain());
 		assertEquals("0xdef", view.address());
 		assertEquals("new", view.tag());
 		assertTrue(view.enabled());
@@ -84,23 +96,75 @@ class DefaultMonitorAddressServiceTest {
 	void shouldListAddressesWithNormalizedFilters() {
 		MonitorAddressEntity entity = new MonitorAddressEntity();
 		ReflectionTestUtils.setField(entity, "id", 3L);
-		entity.setChain("ETH");
 		entity.setAddress("0xaaa");
 		entity.setTag("wallet");
 		entity.setEnabled(true);
-
-		when(monitorAddressRepository.listByFilters(any(), any(), any(), any(Pageable.class)))
+		when(monitorAddressRepository.listByFilters(any(), any(), any(Pageable.class)))
 			.thenReturn(List.of(entity));
 
-		DefaultMonitorAddressService service = new DefaultMonitorAddressService(monitorAddressRepository);
-		List<MonitorAddressView> result = service.list(" eth ", " 0xAA ", true, 20);
+		DefaultMonitorAddressService service = new DefaultMonitorAddressService(
+			monitorAddressRepository,
+			monitorAddressScopeRepository,
+			monitorScopeTokenRepository
+		);
+		List<MonitorAddressView> result = service.list(" 0xAA ", true, 20);
 
 		assertEquals(1, result.size());
-		assertEquals("ETH", result.get(0).chain());
 		assertEquals("0xaaa", result.get(0).address());
 
 		ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-		verify(monitorAddressRepository).listByFilters(org.mockito.ArgumentMatchers.eq("ETH"), org.mockito.ArgumentMatchers.eq("0xaa"), org.mockito.ArgumentMatchers.eq(true), pageableCaptor.capture());
+		verify(monitorAddressRepository).listByFilters(org.mockito.ArgumentMatchers.eq("0xaa"), org.mockito.ArgumentMatchers.eq(true), pageableCaptor.capture());
 		assertEquals(PageRequest.of(0, 20), pageableCaptor.getValue());
+	}
+
+	@Test
+	void shouldUpsertAddress() {
+		when(monitorAddressRepository.findByAddress("0xabc")).thenReturn(Optional.empty());
+		when(monitorAddressRepository.save(any(MonitorAddressEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+		DefaultMonitorAddressService service = new DefaultMonitorAddressService(
+			monitorAddressRepository,
+			monitorAddressScopeRepository,
+			monitorScopeTokenRepository
+		);
+		MonitorAddressUpsertCommand command = new MonitorAddressUpsertCommand("0xAbC", "wallet", true);
+		service.upsert(command);
+
+		verify(monitorAddressRepository).findByAddress("0xabc");
+	}
+
+	@Test
+	void shouldDisableScopesAndTokensWhenAddressDisabled() {
+		MonitorAddressEntity existing = new MonitorAddressEntity();
+		ReflectionTestUtils.setField(existing, "id", 10L);
+		existing.setAddress("0xabc");
+		existing.setEnabled(true);
+		when(monitorAddressRepository.findByAddress("0xabc")).thenReturn(Optional.of(existing));
+		when(monitorAddressRepository.save(any(MonitorAddressEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+		MonitorAddressScopeEntity scope = new MonitorAddressScopeEntity();
+		ReflectionTestUtils.setField(scope, "id", 100L);
+		scope.setMonitorAddressId(10L);
+		scope.setEnabled(true);
+		when(monitorAddressScopeRepository.findByMonitorAddressId(10L)).thenReturn(List.of(scope));
+
+		MonitorScopeTokenEntity token = new MonitorScopeTokenEntity();
+		ReflectionTestUtils.setField(token, "id", 1000L);
+		token.setMonitorScopeId(100L);
+		token.setEnabled(true);
+		when(monitorScopeTokenRepository.findByMonitorScopeIdInOrderByMonitorScopeIdAscIdAsc(List.of(100L)))
+			.thenReturn(List.of(token));
+
+		DefaultMonitorAddressService service = new DefaultMonitorAddressService(
+			monitorAddressRepository,
+			monitorAddressScopeRepository,
+			monitorScopeTokenRepository
+		);
+		service.upsert(new MonitorAddressUpsertCommand("0xAbC", "wallet", false));
+
+		assertFalse(scope.getEnabled());
+		assertFalse(token.getEnabled());
+		verify(monitorAddressScopeRepository).saveAll(List.of(scope));
+		verify(monitorScopeTokenRepository).saveAll(List.of(token));
 	}
 }
