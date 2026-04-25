@@ -59,7 +59,9 @@ class ChainControllerTest {
 	@Test
 	void shouldEnableChainConfig() throws Exception {
 		when(chainConfigService.setEnabled(eq("ETH"), eq("mainnet"), eq(true)))
-			.thenReturn(Optional.of(new ChainConfigView(1L, "ETH", "mainnet", "https://rpc", 12, true)));
+			.thenReturn(Optional.of(new ChainConfigView(
+				1L, "ETH", "mainnet", "https://rpc", "https://rpc", "wss://rpc", "HTTP", 12, true
+			)));
 
 		mockMvc.perform(patch("/api/chains/ETH/mainnet/enable"))
 			.andExpect(status().isOk())
@@ -70,7 +72,9 @@ class ChainControllerTest {
 	@Test
 	void shouldDisableChainConfig() throws Exception {
 		when(chainConfigService.setEnabled(eq("ETH"), eq("mainnet"), eq(false)))
-			.thenReturn(Optional.of(new ChainConfigView(1L, "ETH", "mainnet", "https://rpc", 12, false)));
+			.thenReturn(Optional.of(new ChainConfigView(
+				1L, "ETH", "mainnet", "https://rpc", "https://rpc", "wss://rpc", "HTTP", 12, false
+			)));
 
 		mockMvc.perform(patch("/api/chains/ETH/mainnet/disable"))
 			.andExpect(status().isOk())

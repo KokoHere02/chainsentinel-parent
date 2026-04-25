@@ -26,6 +26,15 @@ public class ChainConfigEntity {
 	@Column(name = "rpc_url", nullable = false, length = 512)
 	private String rpcUrl;
 
+	@Column(name = "rpc_http_url", length = 512)
+	private String rpcHttpUrl;
+
+	@Column(name = "rpc_ws_url", length = 512)
+	private String rpcWsUrl;
+
+	@Column(name = "active_protocol", length = 8)
+	private String activeProtocol;
+
 	@Column(name = "confirm_required", nullable = false)
 	private Integer confirmRequired;
 
@@ -64,6 +73,30 @@ public class ChainConfigEntity {
 
 	public void setRpcUrl(String rpcUrl) {
 		this.rpcUrl = rpcUrl;
+	}
+
+	public String getRpcHttpUrl() {
+		return rpcHttpUrl;
+	}
+
+	public void setRpcHttpUrl(String rpcHttpUrl) {
+		this.rpcHttpUrl = rpcHttpUrl;
+	}
+
+	public String getRpcWsUrl() {
+		return rpcWsUrl;
+	}
+
+	public void setRpcWsUrl(String rpcWsUrl) {
+		this.rpcWsUrl = rpcWsUrl;
+	}
+
+	public String getActiveProtocol() {
+		return activeProtocol;
+	}
+
+	public void setActiveProtocol(String activeProtocol) {
+		this.activeProtocol = activeProtocol;
 	}
 
 	public Integer getConfirmRequired() {

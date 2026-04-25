@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/scanner")
 @Validated
+@Profile("dev")
 public class ScannerController {
 
 	private final ScannerService scannerService;
@@ -22,7 +23,6 @@ public class ScannerController {
 		this.scannerService = scannerService;
 	}
 
-	@Profile("dev")
 	@PostMapping("/run")
 	@RateLimit(
 		name = "scanner.run",

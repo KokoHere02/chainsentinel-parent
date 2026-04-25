@@ -122,7 +122,7 @@ public class DefaultPriceProviderConfigService implements PriceProviderConfigSer
 			throw new IllegalArgumentException("timeoutMs must be > 0");
 		}
 		entity.setProviderName(providerName.trim().toLowerCase(Locale.ROOT));
-		entity.setBaseUrl(baseUrl.trim());
+		entity.setBaseUrl(UrlSchemeSupport.requireSupported(baseUrl, "baseUrl"));
 		entity.setEnabled(enabled == null || enabled);
 		entity.setPriority(priority);
 		entity.setTimeoutMs(timeoutMs);

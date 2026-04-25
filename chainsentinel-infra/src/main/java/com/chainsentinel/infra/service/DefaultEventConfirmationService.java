@@ -69,7 +69,7 @@ public class DefaultEventConfirmationService implements EventConfirmationService
 			return 0;
 		}
 
-		String rpcUrl = chainConfigRpcUrlCodec.decryptIfNeeded(chainConfig.getRpcUrl(), chain, network);
+		String rpcUrl = resolveLogHttpRpcUrl(chainConfig, chain, network);
 		if (!StringUtils.hasText(rpcUrl)) {
 			log.warn("Skip confirmation advance for {}-{} because rpcUrl is empty", chain, network);
 			return 0;
@@ -147,6 +147,29 @@ public class DefaultEventConfirmationService implements EventConfirmationService
 				web3j.shutdown();
 			}
 		});
+	}
+
+	private String resolveLogHttpRpcUrl(ChainConfigEntity chainConfig, String chain, String network) {
+		String httpRpc = chainConfigRpcUrlCodec.decryptIfNeeded(chainConfig.getRpcHttpUrl(), chain, network);
+		if (isHttpRpcUrl(httpRpc)) {
+			return httpRpc;
+		}
+		String legacyRpc = chainConfigRpcUrlCodec.decryptIfNeeded(chainConfig.getRpcUrl(), chain, network);
+		if (isHttpRpcUrl(legacyRpc)) {
+			return legacyRpc;
+		}
+		if (StringUtils.hasText(httpRpc) || StringUtils.hasText(legacyRpc)) {
+			log.warn("Skip confirmation advance for {}-{} because rpc url is not http/https", chain, network);
+		}
+		return null;
+	}
+
+	private boolean isHttpRpcUrl(String rpcUrl) {
+		if (!StringUtils.hasText(rpcUrl)) {
+			return false;
+		}
+		String scheme = UrlSchemeSupport.schemeOf(rpcUrl);
+		return "http".equals(scheme) || "https".equals(scheme);
 	}
 
 	private int confirmations(long latest, long blockNumber) {

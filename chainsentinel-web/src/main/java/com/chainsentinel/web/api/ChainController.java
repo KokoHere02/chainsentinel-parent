@@ -37,6 +37,9 @@ public class ChainController {
 			request.chain(),
 			request.network(),
 			request.rpcUrl(),
+			request.rpcHttpUrl(),
+			request.rpcWsUrl(),
+			request.balanceProtocol(),
 			request.confirmRequired(),
 			request.enabled()
 		);
@@ -78,7 +81,10 @@ public class ChainController {
 	public record ChainUpsertRequest(
 		@NotBlank String chain,
 		@NotBlank String network,
-		@NotBlank String rpcUrl,
+		String rpcUrl,
+		String rpcHttpUrl,
+		String rpcWsUrl,
+		String balanceProtocol,
 		@Min(1) Integer confirmRequired,
 		Boolean enabled
 	) {
@@ -88,6 +94,9 @@ public class ChainController {
 			}
 			if (enabled == null) {
 				enabled = true;
+			}
+			if (balanceProtocol == null || balanceProtocol.isBlank()) {
+				balanceProtocol = "HTTP";
 			}
 		}
 	}

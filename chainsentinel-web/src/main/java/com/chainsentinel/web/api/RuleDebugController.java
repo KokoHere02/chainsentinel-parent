@@ -1,6 +1,5 @@
 package com.chainsentinel.web.api;
 
-import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.core.model.EventStatus;
 import com.chainsentinel.core.model.TokenType;
 import com.chainsentinel.core.exception.DebugEndpointDisabledException;

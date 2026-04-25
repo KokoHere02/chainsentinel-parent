@@ -1,6 +1,7 @@
 package com.chainsentinel.infra.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -68,5 +69,37 @@ class DefaultPriceProviderConfigServiceTest {
 
 		assertEquals(false, result.enabled());
 		verify(priceProviderRuntimeConfig, times(1)).refreshCache();
+	}
+
+	@Test
+	void shouldAllowWebSocketBaseUrl() {
+		PriceProviderConfigCreateCommand command = new PriceProviderConfigCreateCommand(
+			" OKX_WS ",
+			" wss://ws.okx.com:8443/ws/v5/public ",
+			true,
+			1,
+			1500
+		);
+
+		when(priceProviderConfigRepository.save(any(PriceProviderConfigEntity.class))).thenAnswer(invocation -> {
+			PriceProviderConfigEntity entity = invocation.getArgument(0);
+			entity.setEnabled(true);
+			return entity;
+		});
+
+		var result = service.create(command);
+		assertEquals("wss://ws.okx.com:8443/ws/v5/public", result.baseUrl());
+	}
+
+	@Test
+	void shouldRejectUnsupportedBaseUrlScheme() {
+		PriceProviderConfigCreateCommand command = new PriceProviderConfigCreateCommand(
+			"okx",
+			"ftp://www.okx.com",
+			true,
+			1,
+			1500
+		);
+		assertThrows(IllegalArgumentException.class, () -> service.create(command));
 	}
 }
