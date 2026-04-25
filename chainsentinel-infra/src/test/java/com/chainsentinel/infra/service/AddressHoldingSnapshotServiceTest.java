@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.chainsentinel.infra.config.HoldingSnapshotProperties;
@@ -23,6 +24,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.math.BigInteger;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -47,6 +49,8 @@ class AddressHoldingSnapshotServiceTest {
 	private MonitorAddressScopeRepository monitorAddressScopeRepository;
 	@Mock
 	private ChainConfigRpcUrlCodec chainConfigRpcUrlCodec;
+	@Mock
+	private SolanaRpcService solanaRpcService;
 
 	@Test
 	void shouldScanOnlyConfiguredScopeChainAndPersistWhenChanged() throws Exception {
@@ -74,7 +78,9 @@ class AddressHoldingSnapshotServiceTest {
 				monitorAddressScopeRepository,
 				chainConfigRpcUrlCodec,
 				properties,
-				new SimpleMeterRegistry()
+				new SimpleMeterRegistry(),
+				new Web3jClientFactory(),
+				solanaRpcService
 			);
 
 			AddressHoldingSnapshotService.SnapshotResult result = service.refreshNativeHoldings();
@@ -87,6 +93,7 @@ class AddressHoldingSnapshotServiceTest {
 			verify(addressTokenHoldingRepository, times(1)).save(any(AddressTokenHoldingEntity.class));
 			verify(chainConfigRpcUrlCodec, times(1)).decryptIfNeeded("enc:eth", "ETH", "mainnet");
 			verify(chainConfigRpcUrlCodec, never()).decryptIfNeeded("enc:bsc", "BSC", "mainnet");
+			verifyNoInteractions(solanaRpcService);
 		}
 	}
 
@@ -120,7 +127,9 @@ class AddressHoldingSnapshotServiceTest {
 				monitorAddressScopeRepository,
 				chainConfigRpcUrlCodec,
 				properties,
-				new SimpleMeterRegistry()
+				new SimpleMeterRegistry(),
+				new Web3jClientFactory(),
+				solanaRpcService
 			);
 
 			AddressHoldingSnapshotService.SnapshotResult result = service.refreshNativeHoldings();
@@ -130,7 +139,46 @@ class AddressHoldingSnapshotServiceTest {
 			assertEquals(0, result.failed());
 			assertEquals(1, ethRpc.requestCount());
 			verify(addressTokenHoldingRepository, never()).save(any(AddressTokenHoldingEntity.class));
+			verifyNoInteractions(solanaRpcService);
 		}
+	}
+
+	@Test
+	void shouldUseSolanaRpcForSolChain() throws Exception {
+		MonitorAddressScopeEntity scope = scope(303L, 33L, "SOL", "mainnet", true);
+		when(monitorAddressScopeRepository.findByEnabledTrue()).thenReturn(List.of(scope));
+
+		String solAddress = "7kbnvuGBxxj8AG9qp8Scn56muWGaRaFqxg1FsRp3PaFT";
+		MonitorAddressEntity address = address(33L, solAddress, true);
+		when(monitorAddressRepository.findByIdInAndEnabledTrue(List.of(33L))).thenReturn(List.of(address));
+
+		ChainConfigEntity sol = chain("SOL", "mainnet", "enc:sol", true);
+		when(chainConfigRepository.findByEnabledTrue()).thenReturn(List.of(sol));
+		when(chainConfigRpcUrlCodec.decryptIfNeeded("enc:sol", "SOL", "mainnet")).thenReturn("http://sol-rpc");
+		when(solanaRpcService.getBalanceLamports("http://sol-rpc", solAddress)).thenReturn(new BigInteger("123"));
+		when(addressTokenHoldingRepository.findByMonitorScopeIdAndTokenContract(303L, "NATIVE"))
+			.thenReturn(Optional.empty());
+
+		HoldingSnapshotProperties properties = new HoldingSnapshotProperties();
+		AddressHoldingSnapshotService service = new AddressHoldingSnapshotService(
+			monitorAddressRepository,
+			chainConfigRepository,
+			addressTokenHoldingRepository,
+			monitorAddressScopeRepository,
+			chainConfigRpcUrlCodec,
+			properties,
+			new SimpleMeterRegistry(),
+			new Web3jClientFactory(),
+			solanaRpcService
+		);
+
+		AddressHoldingSnapshotService.SnapshotResult result = service.refreshNativeHoldings();
+
+		assertEquals(1, result.scanned());
+		assertEquals(1, result.changed());
+		assertEquals(0, result.failed());
+		verify(solanaRpcService, times(1)).getBalanceLamports("http://sol-rpc", solAddress);
+		verify(addressTokenHoldingRepository, times(1)).save(any(AddressTokenHoldingEntity.class));
 	}
 
 	private static MonitorAddressScopeEntity scope(Long id, Long addressId, String chain, String network, boolean enabled) {
@@ -156,6 +204,7 @@ class AddressHoldingSnapshotServiceTest {
 		entity.setChain(chain);
 		entity.setNetwork(network);
 		entity.setRpcUrl(rpcUrl);
+		entity.setRpcHttpUrl(rpcUrl);
 		entity.setConfirmRequired(12);
 		entity.setEnabled(enabled);
 		return entity;

@@ -14,7 +14,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConditionalOnProperty(prefix = "chainsentinel.holding", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(
+	prefix = "chainsentinel.holding",
+	name = {"enabled", "snapshot-schedule-enabled"},
+	havingValue = "true"
+)
 public class HoldingSnapshotJob {
 
 	private static final Logger log = LoggerFactory.getLogger(HoldingSnapshotJob.class);
