@@ -8,6 +8,7 @@ public class ScannerProperties {
 	private boolean enabled = true;
 	private int windowSize = 200;
 	private long initialStartBlock = 0;
+	private long reorgLookbackBlocks = 24;
 	private int rpcRetryMax = 3;
 	private long rpcRetryBackoffMs = 300;
 
@@ -33,6 +34,14 @@ public class ScannerProperties {
 
 	public void setInitialStartBlock(long initialStartBlock) {
 		this.initialStartBlock = initialStartBlock;
+	}
+
+	public long getReorgLookbackBlocks() {
+		return reorgLookbackBlocks;
+	}
+
+	public void setReorgLookbackBlocks(long reorgLookbackBlocks) {
+		this.reorgLookbackBlocks = reorgLookbackBlocks;
 	}
 
 	public int getRpcRetryMax() {

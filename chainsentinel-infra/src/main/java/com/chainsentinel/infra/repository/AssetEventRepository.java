@@ -25,4 +25,11 @@ public interface AssetEventRepository extends JpaRepository<AssetEventEntity, Lo
 		Pageable pageable
 	);
 
+	List<AssetEventEntity> findByChainAndNetworkAndBlockNumberBetweenOrderByBlockNumberAsc(
+		String chain,
+		String network,
+		Long fromBlock,
+		Long toBlock
+	);
+
 }
