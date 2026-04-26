@@ -36,4 +36,11 @@ public interface PricePullTargetRepository extends JpaRepository<PricePullTarget
 		order by t.priority asc, t.id asc
 		""")
 	List<PricePullTargetEntity> findEnabledByProviderName(@Param("providerName") String providerName);
+
+	@Query("""
+		select count(distinct t.instId)
+		from PricePullTargetEntity t
+		where t.enabled = true
+		""")
+	long countDistinctInstIdByEnabledTrue();
 }

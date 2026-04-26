@@ -61,6 +61,29 @@ public interface PriceTickRepository extends JpaRepository<PriceTickEntity, Long
 	);
 
 	@Query(value = """
+		select t.id,
+		       t.provider_name,
+		       t.inst_type,
+		       t.inst_id,
+		       t.base_symbol,
+		       t.quote_symbol,
+		       t.price,
+		       t.quote_ts,
+		       t.ingested_at
+		from price_tick t
+		where t.provider_name = :providerName
+		  and t.inst_id = :instId
+		  and t.quote_ts >= :fromTs
+		order by t.quote_ts asc
+		limit 1
+		""", nativeQuery = true)
+	Optional<PriceTickEntity> queryEarliestTickSince(
+		@Param("providerName") String providerName,
+		@Param("instId") String instId,
+		@Param("fromTs") Long fromTs
+	);
+
+	@Query(value = """
 		select agg.bucket_start_ts as bucketStartTs,
 		       max(case when agg.rn = 1 then agg.price end) as lastPrice,
 		       min(agg.price) as minPrice,

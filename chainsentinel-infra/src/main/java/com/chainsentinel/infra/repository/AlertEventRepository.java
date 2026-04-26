@@ -47,4 +47,67 @@ where ae.createdAt >= :since and ae.sendStatus <> 'SENT'
 group by ae.sendStatus, ae.lastError
 """)
 	List<AlertFailureSummaryProjection> summarizeFailuresSince(@Param("since") Instant since);
+
+	long countByCreatedAtAfter(Instant since);
+
+	long countByCreatedAtAfterAndSeverityIn(Instant since, List<String> severities);
+
+	@Query(value = """
+		select floor(unix_timestamp(a.created_at) / :bucketSec) * :bucketSec as bucketStartSec,
+		       count(*) as total
+		from alert_event a
+		where a.created_at >= :fromAt
+		  and a.created_at <= :toAt
+		group by floor(unix_timestamp(a.created_at) / :bucketSec)
+		order by bucketStartSec asc
+		""", nativeQuery = true)
+	List<AlertTrendRow> countTrendByBucket(
+		@Param("fromAt") Instant fromAt,
+		@Param("toAt") Instant toAt,
+		@Param("bucketSec") long bucketSec
+	);
+
+	@Query("""
+		select a.severity as severity, count(a) as total
+		from AlertEventEntity a
+		where a.createdAt >= :fromAt and a.createdAt <= :toAt
+		group by a.severity
+		""")
+	List<AlertSeverityRow> countBySeverityBetween(
+		@Param("fromAt") Instant fromAt,
+		@Param("toAt") Instant toAt
+	);
+
+	@Query("""
+		select a.ruleId as ruleId, count(a) as total
+		from AlertEventEntity a
+		where a.createdAt >= :fromAt and a.createdAt <= :toAt
+		group by a.ruleId
+		order by count(a) desc
+		""")
+	List<AlertRuleCountRow> countByRuleBetween(
+		@Param("fromAt") Instant fromAt,
+		@Param("toAt") Instant toAt,
+		Pageable pageable
+	);
+
+	List<AlertEventEntity> findAllByOrderByIdDesc(Pageable pageable);
+
+	interface AlertTrendRow {
+		Long getBucketStartSec();
+
+		Long getTotal();
+	}
+
+	interface AlertSeverityRow {
+		String getSeverity();
+
+		Long getTotal();
+	}
+
+	interface AlertRuleCountRow {
+		Long getRuleId();
+
+		Long getTotal();
+	}
 }

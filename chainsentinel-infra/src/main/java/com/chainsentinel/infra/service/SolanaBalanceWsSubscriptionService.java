@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
@@ -46,6 +47,7 @@ public class SolanaBalanceWsSubscriptionService {
 
 	private static final Logger log = LoggerFactory.getLogger(SolanaBalanceWsSubscriptionService.class);
 	private static final Duration WS_CONNECT_TIMEOUT = Duration.ofSeconds(10);
+	private static final int SPL_FAILURE_CACHE_LIMIT = 5000;
 
 	private final MonitorAddressScopeRepository monitorAddressScopeRepository;
 	private final MonitorAddressRepository monitorAddressRepository;
@@ -60,6 +62,7 @@ public class SolanaBalanceWsSubscriptionService {
 
 	private final Map<TargetKey, ActiveSubscription> activeSubscriptions = new ConcurrentHashMap<>();
 	private final Map<String, WsConnection> connectionsByUrl = new ConcurrentHashMap<>();
+	private final ConcurrentLinkedDeque<SplRefreshFailureRecord> splRefreshFailures = new ConcurrentLinkedDeque<>();
 
 	public SolanaBalanceWsSubscriptionService(
 		MonitorAddressScopeRepository monitorAddressScopeRepository,
@@ -375,9 +378,78 @@ public class SolanaBalanceWsSubscriptionService {
 				} catch (Exception ex) {
 					log.warn("sol.ws.spl.refresh.failed scopeId={} chain={} network={} address={} mint={} error={}",
 						scope.getId(), chain, network, ownerAddress, token.mint(), ex.getMessage());
+					recordSplRefreshFailure(scope.getId(), chain, network, ownerAddress, token.mint(), ex.getMessage());
 				}
 			}
 		}
+	}
+
+	public List<SplRefreshFailureStat> listSplRefreshFailureTop(Instant fromAt, Instant toAt, int top) {
+		int safeTop = Math.max(1, Math.min(100, top));
+		Map<String, SplRefreshFailureStatBuilder> grouped = new HashMap<>();
+		for (SplRefreshFailureRecord record : splRefreshFailures) {
+			if (!withinRange(record.occurredAt(), fromAt, toAt)) {
+				continue;
+			}
+			String key = record.scopeId() + "|" + record.chain() + "|" + record.network() + "|" + record.mint();
+			SplRefreshFailureStatBuilder builder = grouped.computeIfAbsent(key, ignored -> new SplRefreshFailureStatBuilder(
+				record.scopeId(), record.chain(), record.network(), record.address(), record.mint()
+			));
+			builder.count++;
+			if (builder.lastOccurredAt == null || record.occurredAt().isAfter(builder.lastOccurredAt)) {
+				builder.lastOccurredAt = record.occurredAt();
+				builder.lastError = record.error();
+			}
+		}
+		return grouped.values().stream()
+			.sorted((left, right) -> Long.compare(right.count, left.count))
+			.limit(safeTop)
+			.map(builder -> new SplRefreshFailureStat(
+				builder.scopeId,
+				builder.chain,
+				builder.network,
+				builder.address,
+				builder.mint,
+				builder.count,
+				builder.lastError,
+				builder.lastOccurredAt
+			))
+			.toList();
+	}
+
+	private void recordSplRefreshFailure(
+		Long scopeId,
+		String chain,
+		String network,
+		String address,
+		String mint,
+		String error
+	) {
+		splRefreshFailures.addLast(new SplRefreshFailureRecord(
+			scopeId,
+			chain,
+			network,
+			address,
+			mint,
+			error == null ? "unknown" : error,
+			Instant.now()
+		));
+		while (splRefreshFailures.size() > SPL_FAILURE_CACHE_LIMIT) {
+			splRefreshFailures.pollFirst();
+		}
+	}
+
+	private boolean withinRange(Instant value, Instant fromAt, Instant toAt) {
+		if (value == null) {
+			return false;
+		}
+		if (fromAt != null && value.isBefore(fromAt)) {
+			return false;
+		}
+		if (toAt != null && value.isAfter(toAt)) {
+			return false;
+		}
+		return true;
 	}
 
 	private void unsubscribe(ActiveSubscription active, String reason) {
@@ -595,6 +667,48 @@ public class SolanaBalanceWsSubscriptionService {
 	private static final class ScopeTokenStateBuilder {
 		private int totalCount;
 		private final List<TokenSpec> enabledTokens = new ArrayList<>();
+	}
+
+	private record SplRefreshFailureRecord(
+		Long scopeId,
+		String chain,
+		String network,
+		String address,
+		String mint,
+		String error,
+		Instant occurredAt
+	) {
+	}
+
+	public record SplRefreshFailureStat(
+		Long scopeId,
+		String chain,
+		String network,
+		String address,
+		String mint,
+		long count,
+		String lastError,
+		Instant lastOccurredAt
+	) {
+	}
+
+	private static final class SplRefreshFailureStatBuilder {
+		private final Long scopeId;
+		private final String chain;
+		private final String network;
+		private final String address;
+		private final String mint;
+		private long count;
+		private String lastError;
+		private Instant lastOccurredAt;
+
+		private SplRefreshFailureStatBuilder(Long scopeId, String chain, String network, String address, String mint) {
+			this.scopeId = scopeId;
+			this.chain = chain;
+			this.network = network;
+			this.address = address;
+			this.mint = mint;
+		}
 	}
 
 	private final class WsConnection implements WebSocket.Listener {
