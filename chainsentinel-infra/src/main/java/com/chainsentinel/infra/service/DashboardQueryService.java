@@ -9,7 +9,6 @@ import com.chainsentinel.infra.entity.PriceTickEntity;
 import com.chainsentinel.infra.repository.AlertEventRepository;
 import com.chainsentinel.infra.repository.AlertEventRepository.AlertRuleCountRow;
 import com.chainsentinel.infra.repository.AlertEventRepository.AlertSeverityRow;
-import com.chainsentinel.infra.repository.AlertEventRepository.AlertTrendRow;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.repository.MonitorAddressRepository;
 import com.chainsentinel.infra.repository.PricePullTargetRepository;
@@ -29,6 +28,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -116,7 +116,11 @@ public class DashboardQueryService {
 			}
 			long fromTs = Math.max(1L, latest.getQuoteTs() - windowMs);
 			PriceTickEntity baseline = priceTickRepository
-				.queryEarliestTickSince(DEFAULT_PROVIDER, instId, fromTs)
+				.findFirstByProviderNameAndInstIdAndQuoteTsGreaterThanEqualOrderByQuoteTsAsc(
+					DEFAULT_PROVIDER,
+					instId,
+					fromTs
+				)
 				.orElse(latest);
 			BigDecimal baselinePrice = baseline.getPrice() == null ? latest.getPrice() : baseline.getPrice();
 			BigDecimal changePct = calculateChangePercent(latest.getPrice(), baselinePrice);
@@ -138,24 +142,26 @@ public class DashboardQueryService {
 		long safeBucketMs = Math.max(1_000L, bucketMs);
 		int safeLimit = Math.max(1, Math.min(20_000, limit));
 		String normalizedInstId = instId.trim().toUpperCase(Locale.ROOT);
-		List<PriceTickRepository.PriceTickAggregateRow> rows = priceTickRepository.queryTickAggregatesByProviderAndInst(
+		List<PriceTickEntity> ticks = priceTickRepository.queryTicks(
 			DEFAULT_PROVIDER,
 			normalizedInstId,
 			fromTs,
 			toTs,
-			safeBucketMs,
-			safeLimit
+			PageRequest.of(0, safeLimit)
 		);
-		List<PriceTrendPointView> points = new ArrayList<>(rows.size());
-		for (int i = rows.size() - 1; i >= 0; i--) {
-			PriceTickRepository.PriceTickAggregateRow row = rows.get(i);
-			points.add(new PriceTrendPointView(
-				row.getBucketStartTs(),
-				row.getLastPrice(),
-				row.getMinPrice(),
-				row.getMaxPrice(),
-				row.getCount()
-			));
+		Map<Long, PriceBucketAccumulator> buckets = new TreeMap<>();
+		for (PriceTickEntity tick : ticks) {
+			if (tick == null || tick.getQuoteTs() == null || tick.getPrice() == null) {
+				continue;
+			}
+			long bucketStartTs = (tick.getQuoteTs() / safeBucketMs) * safeBucketMs;
+			PriceBucketAccumulator acc = buckets.computeIfAbsent(bucketStartTs, ignored -> new PriceBucketAccumulator());
+			acc.accept(tick.getQuoteTs(), tick.getPrice());
+		}
+		List<PriceTrendPointView> points = new ArrayList<>(buckets.size());
+		for (Map.Entry<Long, PriceBucketAccumulator> entry : buckets.entrySet()) {
+			PriceBucketAccumulator acc = entry.getValue();
+			points.add(new PriceTrendPointView(entry.getKey(), acc.lastPrice, acc.minPrice, acc.maxPrice, acc.count));
 		}
 		return points;
 	}
@@ -171,9 +177,7 @@ public class DashboardQueryService {
 	public AlertSummaryView alertSummary(Instant fromAt, Instant toAt, long bucketSec, int topRules) {
 		long safeBucketSec = Math.max(60L, bucketSec);
 		int safeTopRules = Math.max(1, Math.min(100, topRules));
-		List<AlertTrendPointView> trend = alertEventRepository.countTrendByBucket(fromAt, toAt, safeBucketSec).stream()
-			.map(row -> new AlertTrendPointView(row.getBucketStartSec() * 1000L, row.getTotal()))
-			.toList();
+		List<AlertTrendPointView> trend = aggregateAlertTrend(fromAt, toAt, safeBucketSec);
 		List<AlertSeverityCountView> severities = alertEventRepository.countBySeverityBetween(fromAt, toAt).stream()
 			.map(row -> new AlertSeverityCountView(row.getSeverity(), row.getTotal()))
 			.toList();
@@ -245,6 +249,49 @@ public class DashboardQueryService {
 			alert.getCreatedAt(),
 			alert.getSentAt()
 		);
+	}
+
+	private List<AlertTrendPointView> aggregateAlertTrend(Instant fromAt, Instant toAt, long bucketSec) {
+		if (fromAt == null || toAt == null || fromAt.isAfter(toAt)) {
+			return List.of();
+		}
+		Map<Long, Long> countsByBucket = new TreeMap<>();
+		List<AlertEventEntity> events = alertEventRepository.findByCreatedAtBetweenOrderByCreatedAtAsc(fromAt, toAt);
+		for (AlertEventEntity event : events) {
+			if (event == null || event.getCreatedAt() == null) {
+				continue;
+			}
+			long epochSec = event.getCreatedAt().getEpochSecond();
+			long bucketStartSec = (epochSec / bucketSec) * bucketSec;
+			countsByBucket.merge(bucketStartSec, 1L, Long::sum);
+		}
+		List<AlertTrendPointView> result = new ArrayList<>(countsByBucket.size());
+		for (Map.Entry<Long, Long> entry : countsByBucket.entrySet()) {
+			result.add(new AlertTrendPointView(entry.getKey() * 1000L, entry.getValue()));
+		}
+		return result;
+	}
+
+	private static final class PriceBucketAccumulator {
+		private Long lastQuoteTs;
+		private BigDecimal lastPrice;
+		private BigDecimal minPrice;
+		private BigDecimal maxPrice;
+		private long count;
+
+		private void accept(Long quoteTs, BigDecimal price) {
+			count++;
+			if (minPrice == null || price.compareTo(minPrice) < 0) {
+				minPrice = price;
+			}
+			if (maxPrice == null || price.compareTo(maxPrice) > 0) {
+				maxPrice = price;
+			}
+			if (lastQuoteTs == null || quoteTs >= lastQuoteTs) {
+				lastQuoteTs = quoteTs;
+				lastPrice = price;
+			}
+		}
 	}
 
 	public record OverviewView(

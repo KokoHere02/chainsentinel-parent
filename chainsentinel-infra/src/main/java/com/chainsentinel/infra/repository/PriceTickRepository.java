@@ -17,6 +17,12 @@ public interface PriceTickRepository extends JpaRepository<PriceTickEntity, Long
 		String instId
 	);
 
+	Optional<PriceTickEntity> findFirstByProviderNameAndInstIdAndQuoteTsGreaterThanEqualOrderByQuoteTsAsc(
+		String providerName,
+		String instId,
+		Long quoteTs
+	);
+
 	@Query("""
 		select t
 		from PriceTickEntity t
