@@ -3,11 +3,12 @@ package com.chainsentinel.web.api;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.chainsentinel.infra.service.OkxPriceTickBackfillService;
+import com.chainsentinel.infra.service.OkxBackfillAsyncTaskService;
 import java.time.Instant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -22,19 +23,19 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class InternalPriceTickBackfillControllerTest {
 
 	@Mock
-	private OkxPriceTickBackfillService okxPriceTickBackfillService;
+	private OkxBackfillAsyncTaskService okxBackfillAsyncTaskService;
 
 	private MockMvc mockMvc;
 
 	@BeforeEach
 	void setUp() {
-		InternalPriceTickBackfillController controller = new InternalPriceTickBackfillController(okxPriceTickBackfillService);
+		InternalPriceTickBackfillController controller = new InternalPriceTickBackfillController(okxBackfillAsyncTaskService);
 		mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 	}
 
 	@Test
-	void shouldBackfillOkxTicks() throws Exception {
-		when(okxPriceTickBackfillService.backfill(
+	void shouldSubmitBackfillOkxTask() throws Exception {
+		when(okxBackfillAsyncTaskService.submit(
 			eq("BTC-USDT"),
 			eq(1700000000000L),
 			eq(1700086400000L),
@@ -42,21 +43,17 @@ class InternalPriceTickBackfillControllerTest {
 			eq(300),
 			eq(200),
 			eq(120L)
-		)).thenReturn(new OkxPriceTickBackfillService.BackfillResult(
+		)).thenReturn(new OkxBackfillAsyncTaskService.TaskAccepted(
+			"okx-1-1",
+			"QUEUED",
 			"BTC-USDT",
 			1700000000000L,
 			1700086400000L,
 			"1m",
-			10,
-			3000,
-			2800,
-			true,
-			"reached_from",
-			1699999999000L,
-			1700086399000L,
-			1699999998999L,
-			Instant.parse("2026-04-17T10:00:00Z"),
-			Instant.parse("2026-04-17T10:00:05Z")
+			300,
+			200,
+			120L,
+			Instant.parse("2026-04-17T10:00:00Z")
 		));
 
 		mockMvc.perform(post("/api/internal/price-ticks/backfill/okx")
@@ -69,10 +66,42 @@ class InternalPriceTickBackfillControllerTest {
 					}
 					"""))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.instId", is("BTC-USDT")))
-			.andExpect(jsonPath("$.inserted", is(2800)))
-			.andExpect(jsonPath("$.reachedFrom", is(true)))
-			.andExpect(jsonPath("$.stopReason", is("reached_from")));
+			.andExpect(jsonPath("$.taskId", is("okx-1-1")))
+			.andExpect(jsonPath("$.status", is("QUEUED")))
+			.andExpect(jsonPath("$.instId", is("BTC-USDT")));
+	}
+
+	@Test
+	void shouldQueryTaskStatus() throws Exception {
+		when(okxBackfillAsyncTaskService.query(eq("okx-1-1"))).thenReturn(new OkxBackfillAsyncTaskService.TaskStatus(
+			"okx-1-1",
+			"SUCCEEDED",
+			"BTC-USDT",
+			1700000000000L,
+			1700086400000L,
+			"1m",
+			300,
+			200,
+			120L,
+			Instant.parse("2026-04-17T10:00:00Z"),
+			Instant.parse("2026-04-17T10:00:01Z"),
+			Instant.parse("2026-04-17T10:00:05Z"),
+			null,
+			null
+		));
+
+		mockMvc.perform(get("/api/internal/price-ticks/backfill/okx/tasks/okx-1-1"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.taskId", is("okx-1-1")))
+			.andExpect(jsonPath("$.status", is("SUCCEEDED")));
+	}
+
+	@Test
+	void shouldReturnNotFoundWhenTaskMissing() throws Exception {
+		when(okxBackfillAsyncTaskService.query(eq("missing"))).thenReturn(null);
+
+		mockMvc.perform(get("/api/internal/price-ticks/backfill/okx/tasks/missing"))
+			.andExpect(status().isNotFound());
 	}
 
 	@Test
