@@ -8,8 +8,11 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.util.List;
+import java.util.NoSuchElementException;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -53,6 +56,15 @@ public class ScopeTokenController {
 		return monitorScopeTokenService.list(monitorScopeId, keyword, enabled, limit);
 	}
 
+	@DeleteMapping("/{id}")
+	public void delete(@PathVariable @Min(1) Long id) {
+		try {
+			monitorScopeTokenService.delete(id);
+		} catch (NoSuchElementException ex) {
+			throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage());
+		}
+	}
+
 	public record ScopeTokenUpsertRequest(
 		@NotNull @Min(1) Long monitorScopeId,
 		@NotBlank String tokenContract,
@@ -67,4 +79,3 @@ public class ScopeTokenController {
 		}
 	}
 }
-

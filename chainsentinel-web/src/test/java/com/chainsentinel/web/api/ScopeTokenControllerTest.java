@@ -3,8 +3,10 @@ package com.chainsentinel.web.api;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -12,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.chainsentinel.core.service.MonitorScopeTokenService;
 import com.chainsentinel.core.service.dto.MonitorScopeTokenView;
 import java.util.List;
+import java.util.NoSuchElementException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,5 +62,21 @@ class ScopeTokenControllerTest {
 		mockMvc.perform(get("/api/scope-tokens").param("limit", "0"))
 			.andExpect(status().isBadRequest());
 	}
-}
 
+	@Test
+	void shouldDeleteScopeToken() throws Exception {
+		mockMvc.perform(delete("/api/scope-tokens/5"))
+			.andExpect(status().isOk());
+
+		verify(monitorScopeTokenService).delete(5L);
+	}
+
+	@Test
+	void shouldReturnNotFoundWhenDeletingMissingScopeToken() throws Exception {
+		doThrow(new NoSuchElementException("scope token not found: 5"))
+			.when(monitorScopeTokenService).delete(5L);
+
+		mockMvc.perform(delete("/api/scope-tokens/5"))
+			.andExpect(status().isNotFound());
+	}
+}

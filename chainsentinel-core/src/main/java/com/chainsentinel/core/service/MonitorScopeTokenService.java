@@ -9,5 +9,6 @@ public interface MonitorScopeTokenService {
 	MonitorScopeTokenView upsert(MonitorScopeTokenUpsertCommand command);
 
 	List<MonitorScopeTokenView> list(Long monitorScopeId, String keyword, Boolean enabled, int limit);
-}
 
+	void delete(Long id);
+}
