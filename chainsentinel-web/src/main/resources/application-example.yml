@@ -2,7 +2,7 @@ spring:
   datasource:
     url: jdbc:mysql://localhost:3306/chainsentinel?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
     username: your_mysql_username
-    password: your_mysql_password
+    password: ""
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     open-in-view: false
@@ -22,17 +22,16 @@ chainsentinel:
     rule-test-match-enabled: true
   security:
     crypto:
-      key-base64: YOUR_BASE64_KEY
+      key-base64: ""
   scanner:
     enabled: true
     window-size: 2
     initial-start-block: 0
+    reorg-lookback-blocks: 24
     rpc-retry-max: 3
     rpc-retry-backoff-ms: 300
   holding:
-    enabled: true
-    interval-ms: 1800000
-    initial-delay-ms: 15000
+    sol-ws-enabled: true
     native-token-contract: NATIVE
     native-token-symbol: ETH
     native-token-decimals: 18

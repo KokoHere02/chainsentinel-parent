@@ -188,8 +188,7 @@ public class SolanaBalanceWsSubscriptionService {
 
 			String httpUrl = resolveSolanaHttpUrl(chainConfig, chain, network);
 			TargetKey targetKey = new TargetKey(scope.getId(), chain, network, address, wsUrl);
-			List<TokenSpec> tokenSpecs = tokenState == null ? List.of() : tokenState.enabledTokens();
-			desired.put(targetKey, new TargetSpec(httpUrl, tokenSpecs));
+			desired.put(targetKey, new TargetSpec(httpUrl));
 		}
 		return desired;
 	}
@@ -578,7 +577,7 @@ public class SolanaBalanceWsSubscriptionService {
 		return normalizeText(chain) + "|" + normalizeText(network);
 	}
 
-	private record TargetSpec(String httpRpcUrl, List<TokenSpec> tokenSpecs) {
+	private record TargetSpec(String httpRpcUrl) {
 	}
 
 	private record TargetKey(Long scopeId, String chain, String network, String address, String wsUrl) {
