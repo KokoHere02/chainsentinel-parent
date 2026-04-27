@@ -1,0 +1,33 @@
+FROM maven:3.9.9-eclipse-temurin-17 AS builder
+
+WORKDIR /workspace
+
+COPY pom.xml ./
+COPY chainsentinel-common/pom.xml chainsentinel-common/pom.xml
+COPY chainsentinel-core/pom.xml chainsentinel-core/pom.xml
+COPY chainsentinel-infra/pom.xml chainsentinel-infra/pom.xml
+COPY chainsentinel-price/pom.xml chainsentinel-price/pom.xml
+COPY chainsentinel-web/pom.xml chainsentinel-web/pom.xml
+
+RUN mvn -q -pl chainsentinel-web -am -DskipTests dependency:go-offline
+
+COPY . .
+
+RUN mvn -q -pl chainsentinel-web -am -DskipTests package
+
+FROM eclipse-temurin:17-jre-jammy
+
+WORKDIR /app
+
+RUN useradd -r -u 10001 appuser
+
+COPY --from=builder /workspace/chainsentinel-web/target/chainsentinel-web-*.jar /app/app.jar
+
+ENV SPRING_PROFILES_ACTIVE=prod
+ENV TZ=Asia/Shanghai
+
+EXPOSE 8080
+
+USER appuser
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

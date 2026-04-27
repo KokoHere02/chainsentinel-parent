@@ -1,5 +1,24 @@
-version: "3.9"
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chainsentinel-app:local
+    container_name: chainsentinel-app
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:mysql://mysql:3306/chainsentinel?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      CHAINSENTINEL_CRYPTO_KEY_BASE64: ""
+      WEB_ALLOWED_ORIGINS: ${WEB_ALLOWED_ORIGINS:-http://localhost:5173}
+      JAVA_OPTS: ${JAVA_OPTS:--Xms512m -Xmx512m}
+
   mysql:
     image: mysql:8.4
     container_name: chainsentinel-mysql
@@ -18,11 +37,18 @@ services:
     image: prom/prometheus:v2.53.1
     container_name: chainsentinel-prometheus
     restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
     ports:
       - "9090:9090"
     volumes:
       - ./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/alert-rules.yml:/etc/prometheus/alert-rules.yml:ro
+      - prometheus_data:/prometheus
 
 volumes:
   mysql_data:
+  prometheus_data:
 
