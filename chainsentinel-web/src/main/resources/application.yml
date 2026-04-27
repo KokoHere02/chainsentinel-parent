@@ -17,7 +17,13 @@ management:
       probes:
         enabled: true
 
+logging:
+  pattern:
+    level: "%5p [rid:%X{requestId:-}]"
+
 chainsentinel:
   debug:
     rule-test-match-enabled: false
+  web:
+    allowed-origins: ${WEB_ALLOWED_ORIGINS:http://localhost:5173}
 

@@ -1,7 +1,10 @@
 package com.chainsentinel.web;
 
 import com.chainsentinel.web.api.support.ratelimit.RateLimitInterceptor;
+import java.util.Arrays;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -9,16 +12,23 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebCorsConfig implements WebMvcConfigurer {
 
-	private final RateLimitInterceptor rateLimitInterceptor;
+	private static final String DEFAULT_ALLOWED_ORIGIN = "http://localhost:5173";
 
-	public WebCorsConfig(RateLimitInterceptor rateLimitInterceptor) {
+	private final RateLimitInterceptor rateLimitInterceptor;
+	private final String[] allowedOrigins;
+
+	public WebCorsConfig(
+		RateLimitInterceptor rateLimitInterceptor,
+		@Value("${chainsentinel.web.allowed-origins:http://localhost:5173}") String allowedOriginsValue
+	) {
 		this.rateLimitInterceptor = rateLimitInterceptor;
+		this.allowedOrigins = parseAllowedOrigins(allowedOriginsValue);
 	}
 
 	@Override
 	public void addCorsMappings(CorsRegistry registry) {
 		registry.addMapping("/**")
-			.allowedOrigins("http://localhost:5173")
+			.allowedOrigins(allowedOrigins)
 			.allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
 			.allowedHeaders("*")
 			.allowCredentials(true)
@@ -28,5 +38,20 @@ public class WebCorsConfig implements WebMvcConfigurer {
 	@Override
 	public void addInterceptors(InterceptorRegistry registry) {
 		registry.addInterceptor(rateLimitInterceptor);
+	}
+
+	private String[] parseAllowedOrigins(String value) {
+		if (!StringUtils.hasText(value)) {
+			return new String[] { DEFAULT_ALLOWED_ORIGIN };
+		}
+		String[] parsed = StringUtils.commaDelimitedListToStringArray(value);
+		String[] normalized = Arrays.stream(parsed)
+			.map(String::trim)
+			.filter(StringUtils::hasText)
+			.toArray(String[]::new);
+		if (normalized.length == 0) {
+			return new String[] { DEFAULT_ALLOWED_ORIGIN };
+		}
+		return normalized;
 	}
 }

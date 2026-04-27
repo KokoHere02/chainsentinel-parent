@@ -113,7 +113,15 @@ public class GlobalExceptionHandler {
 
 	@ExceptionHandler(Exception.class)
 	public ResponseEntity<ApiErrorResponse> handleUnhandled(Exception ex, HttpServletRequest request) {
-		log.error("Unhandled exception path={} message={}", request.getRequestURI(), ex.getMessage(), ex);
+		String requestId = readRequestId(request);
+		log.error(
+			"Unhandled exception requestId={} method={} path={} message={}",
+			requestId,
+			request.getMethod(),
+			request.getRequestURI(),
+			ex.getMessage(),
+			ex
+		);
 		return build(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error", request, List.of());
 	}
 
@@ -138,5 +146,10 @@ public class GlobalExceptionHandler {
 			details
 		);
 		return ResponseEntity.status(status).body(body);
+	}
+
+	private String readRequestId(HttpServletRequest request) {
+		Object value = request.getAttribute(RequestTraceFilter.REQUEST_ATTR_REQUEST_ID);
+		return value == null ? "-" : String.valueOf(value);
 	}
 }

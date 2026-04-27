@@ -18,6 +18,8 @@ spring:
     baseline-version: 1
 
 chainsentinel:
+  web:
+    allowed-origins: http://localhost:5173
   debug:
     rule-test-match-enabled: true
   security:
