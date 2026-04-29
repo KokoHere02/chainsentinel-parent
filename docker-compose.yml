@@ -29,7 +29,6 @@ services:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: chainsentinel
       TZ: UTC
-    command: ["--default-authentication-plugin=mysql_native_password"]
     volumes:
       - mysql_data:/var/lib/mysql
 
