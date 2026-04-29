@@ -8,6 +8,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.TimeUnit;
 
 import com.chainsentinel.core.service.PriceSnapshotService;
 import com.chainsentinel.core.service.dto.PriceSnapshotUpsertCommand;
@@ -21,6 +23,8 @@ import com.chainsentinel.price.api.PriceService;
 import com.chainsentinel.price.api.dto.PriceInstType;
 import com.chainsentinel.price.api.dto.PriceQuery;
 import com.chainsentinel.price.api.dto.PriceQuote;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,6 +36,10 @@ import org.springframework.util.StringUtils;
 public class PriceIngestJob {
 
 	private static final Logger log = LoggerFactory.getLogger(PriceIngestJob.class);
+	private static final String METRIC_JOB_RUN_TOTAL = "chainsentinel_job_run_total";
+	private static final String METRIC_JOB_RUN_DURATION = "chainsentinel_job_run_duration";
+	private static final String METRIC_JOB_RUNNING = "chainsentinel_job_running";
+	private static final String JOB_TAG = "price_ingest";
 
 	private final PriceService priceService;
 	private final PriceSnapshotService priceSnapshotService;
@@ -39,7 +47,9 @@ public class PriceIngestJob {
 	private final PriceProviderConfigRepository priceProviderConfigRepository;
 	private final AssetPriceSnapshotRepository assetPriceSnapshotRepository;
 	private final PriceIngestProperties priceIngestProperties;
+	private final MeterRegistry meterRegistry;
 	private final AtomicBoolean running = new AtomicBoolean(false);
+	private final AtomicInteger runningGauge = new AtomicInteger(0);
 
 	public PriceIngestJob(
 		PriceService priceService,
@@ -47,7 +57,8 @@ public class PriceIngestJob {
 		PricePullTargetRepository pricePullTargetRepository,
 		PriceProviderConfigRepository priceProviderConfigRepository,
 		AssetPriceSnapshotRepository assetPriceSnapshotRepository,
-		PriceIngestProperties priceIngestProperties
+		PriceIngestProperties priceIngestProperties,
+		MeterRegistry meterRegistry
 	) {
 		this.priceService = priceService;
 		this.priceSnapshotService = priceSnapshotService;
@@ -55,6 +66,10 @@ public class PriceIngestJob {
 		this.priceProviderConfigRepository = priceProviderConfigRepository;
 		this.assetPriceSnapshotRepository = assetPriceSnapshotRepository;
 		this.priceIngestProperties = priceIngestProperties;
+		this.meterRegistry = meterRegistry;
+		Gauge.builder(METRIC_JOB_RUNNING, runningGauge, AtomicInteger::get)
+			.tag("job", JOB_TAG)
+			.register(meterRegistry);
 	}
 
 //	@Scheduled(fixedDelayString = "${chainsentinel.price.ingest.interval-ms:15000}")
@@ -64,8 +79,12 @@ public class PriceIngestJob {
 		}
 		if (!running.compareAndSet(false, true)) {
 			log.warn("price.ingest.skip previous run still in progress");
+			meterRegistry.counter(METRIC_JOB_RUN_TOTAL, "job", JOB_TAG, "status", "skipped_running").increment();
 			return;
 		}
+		runningGauge.set(1);
+		long startedNs = System.nanoTime();
+		String status = "success";
 
 		int success = 0;
 		int total = 0;
@@ -79,8 +98,13 @@ public class PriceIngestJob {
 			}
 			log.info("price.ingest.job.done success={} total={}", success, total);
 		} catch (Exception ex) {
+			status = "failed";
 			log.error("price.ingest.job.failed", ex);
 		} finally {
+			meterRegistry.counter(METRIC_JOB_RUN_TOTAL, "job", JOB_TAG, "status", status).increment();
+			meterRegistry.timer(METRIC_JOB_RUN_DURATION, "job", JOB_TAG, "status", status)
+				.record(System.nanoTime() - startedNs, TimeUnit.NANOSECONDS);
+			runningGauge.set(0);
 			running.set(false);
 		}
 	}
