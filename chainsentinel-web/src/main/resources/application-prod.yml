@@ -1,0 +1,116 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/chainsentinel?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC}
+    username: ${DB_USERNAME:chainsentinel}
+    password: ${DB_PASSWORD:}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      maximum-pool-size: ${DB_MAX_POOL_SIZE:20}
+      minimum-idle: ${DB_MIN_IDLE:5}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:30000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT_MS:5000}
+      idle-timeout: ${DB_IDLE_TIMEOUT_MS:600000}
+      max-lifetime: ${DB_MAX_LIFETIME_MS:1800000}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        format_sql: false
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+chainsentinel:
+  web:
+    allowed-origins: ${WEB_ALLOWED_ORIGINS:http://localhost:5173}
+  debug:
+    # 线上联调建议关闭规则调试接口
+    rule-test-match-enabled: ${RULE_TEST_MATCH_ENABLED:false}
+  security:
+    crypto:
+      # 必填: 16/24/32 字节 AES key 的 Base64
+      key-base64: ${CHAINSENTINEL_CRYPTO_KEY_BASE64:}
+
+  scanner:
+    enabled: ${SCANNER_ENABLED:true}
+    window-size: ${SCANNER_WINDOW_SIZE:2}
+    initial-start-block: ${SCANNER_INITIAL_START_BLOCK:0}
+    reorg-lookback-blocks: ${SCANNER_REORG_LOOKBACK_BLOCKS:24}
+    rpc-retry-max: ${SCANNER_RPC_RETRY_MAX:3}
+    rpc-retry-backoff-ms: ${SCANNER_RPC_RETRY_BACKOFF_MS:300}
+
+  confirmation:
+    enabled: ${CONFIRMATION_ENABLED:true}
+    interval-ms: ${CONFIRMATION_INTERVAL_MS:20000}
+    initial-delay-ms: ${CONFIRMATION_INITIAL_DELAY_MS:5000}
+    batch-size: ${CONFIRMATION_BATCH_SIZE:500}
+
+  holding:
+    sol-ws-enabled: ${HOLDING_SOL_WS_ENABLED:true}
+    native-token-contract: ${NATIVE_TOKEN_CONTRACT:NATIVE}
+    native-token-symbol: ${NATIVE_TOKEN_SYMBOL:ETH}
+    native-token-decimals: ${NATIVE_TOKEN_DECIMALS:18}
+
+  alert:
+    enabled: ${ALERT_ENABLED:true}
+    webhook-url: ${ALERT_WEBHOOK_URL:http://127.0.0.1:8080/api/alerts/handler}
+    retry-max: ${ALERT_RETRY_MAX:5}
+    batch-size: ${ALERT_BATCH_SIZE:100}
+    dispatch-interval-ms: ${ALERT_DISPATCH_INTERVAL_MS:10000}
+
+  price:
+    ingest:
+      enabled: ${PRICE_INGEST_ENABLED:true}
+      interval-ms: ${PRICE_INGEST_INTERVAL_MS:15000}
+    tick:
+      enabled: ${PRICE_TICK_ENABLED:true}
+      queue-capacity: ${PRICE_TICK_QUEUE_CAPACITY:20000}
+      batch-size: ${PRICE_TICK_BATCH_SIZE:200}
+      flush-interval-ms: ${PRICE_TICK_FLUSH_INTERVAL_MS:1000}
+    tick-retention:
+      # 联调期默认关闭自动清理，避免误删数据
+      enabled: ${PRICE_TICK_RETENTION_ENABLED:false}
+      retention-days: ${PRICE_TICK_RETENTION_DAYS:30}
+      cleanup-interval-ms: ${PRICE_TICK_RETENTION_CLEANUP_INTERVAL_MS:86400000}
+    tick-backfill:
+      daily-cron: ${PRICE_TICK_BACKFILL_DAILY_CRON:0 0 3 * * *}
+      retention-days: ${PRICE_TICK_BACKFILL_RETENTION_DAYS:30}
+      bar: ${PRICE_TICK_BACKFILL_BAR:1m}
+      page-limit: ${PRICE_TICK_BACKFILL_PAGE_LIMIT:300}
+      max-rounds: ${PRICE_TICK_BACKFILL_MAX_ROUNDS:1000}
+      sleep-ms: ${PRICE_TICK_BACKFILL_SLEEP_MS:50}
+      global-max-concurrent: ${PRICE_TICK_BACKFILL_GLOBAL_MAX_CONCURRENT:1}
+    backfill:
+      # 异步 backfill 任务状态保留时间（毫秒）
+      task-retention-ms: ${PRICE_BACKFILL_TASK_RETENTION_MS:600000}
+      task-cleanup-interval-ms: ${PRICE_BACKFILL_TASK_CLEANUP_INTERVAL_MS:60000}
+    ws:
+      enabled: ${PRICE_WS_ENABLED:true}
+      refresh-interval-ms: ${PRICE_WS_REFRESH_INTERVAL_MS:30000}
+      okx:
+        guard:
+          max-jump-ratio: ${PRICE_WS_OKX_GUARD_MAX_JUMP_RATIO:0.2}
+          short-window-ms: ${PRICE_WS_OKX_GUARD_SHORT_WINDOW_MS:2000}
+          drop-log-interval-ms: ${PRICE_WS_OKX_GUARD_DROP_LOG_INTERVAL_MS:30000}
+
+logging:
+  level:
+    root: ${LOG_LEVEL_ROOT:INFO}
+    com.chainsentinel: ${LOG_LEVEL_APP:INFO}
