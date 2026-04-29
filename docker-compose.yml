@@ -31,6 +31,7 @@ services:
       TZ: UTC
     volumes:
       - mysql_data_v2:/var/lib/mysql
+      - ./ops/init-chainsentinel.sql:/docker-entrypoint-initdb.d/init-chainsentinel.sql:ro
 
   prometheus:
     image: prom/prometheus:v2.53.1
