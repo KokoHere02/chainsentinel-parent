@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.chainsentinel.core.service.ScannerService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,7 +24,7 @@ class ScannerJobTest {
     void shouldRunScanner() {
         when(scannerService.runOnce()).thenReturn(3);
 
-        ScannerJob job = new ScannerJob(scannerService);
+        ScannerJob job = new ScannerJob(scannerService, new SimpleMeterRegistry());
 
         job.run();
 
@@ -32,7 +33,7 @@ class ScannerJobTest {
 
     @Test
     void shouldSkipWhenPreviousRunIsStillRunning() {
-        ScannerJob job = new ScannerJob(scannerService);
+        ScannerJob job = new ScannerJob(scannerService, new SimpleMeterRegistry());
         AtomicBoolean running = (AtomicBoolean) ReflectionTestUtils.getField(job, "running");
         running.set(true);
 
@@ -47,7 +48,7 @@ class ScannerJobTest {
                 .thenThrow(new RuntimeException("boom"))
                 .thenReturn(1);
 
-        ScannerJob job = new ScannerJob(scannerService);
+        ScannerJob job = new ScannerJob(scannerService, new SimpleMeterRegistry());
 
         job.run();
         job.run();

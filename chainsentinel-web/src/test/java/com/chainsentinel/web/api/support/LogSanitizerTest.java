@@ -20,7 +20,7 @@ class LogSanitizerTest {
 
 	@Test
 	void shouldTruncateLongMessage() {
-		String raw = "x".repeat(300);
+		String raw = ("~".repeat(40) + "!").repeat(10);
 		String sanitized = LogSanitizer.sanitizeMessage(raw);
 		assertTrue(sanitized.endsWith("..."));
 		assertTrue(sanitized.length() <= 259);

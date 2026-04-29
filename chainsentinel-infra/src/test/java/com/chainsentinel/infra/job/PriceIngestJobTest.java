@@ -17,6 +17,7 @@ import com.chainsentinel.infra.repository.PriceProviderConfigRepository;
 import com.chainsentinel.infra.repository.PricePullTargetRepository;
 import com.chainsentinel.price.api.PriceService;
 import com.chainsentinel.price.api.dto.PriceQuote;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -96,7 +97,8 @@ class PriceIngestJobTest {
       pricePullTargetRepository,
       priceProviderConfigRepository,
       assetPriceSnapshotRepository,
-      properties
+      properties,
+      new SimpleMeterRegistry()
     );
     job.run();
 
@@ -139,7 +141,8 @@ class PriceIngestJobTest {
       pricePullTargetRepository,
       priceProviderConfigRepository,
       assetPriceSnapshotRepository,
-      properties
+      properties,
+      new SimpleMeterRegistry()
     );
     job.run();
 
@@ -158,7 +161,8 @@ class PriceIngestJobTest {
       pricePullTargetRepository,
       priceProviderConfigRepository,
       assetPriceSnapshotRepository,
-      properties
+      properties,
+      new SimpleMeterRegistry()
     );
     job.run();
 
@@ -176,7 +180,8 @@ class PriceIngestJobTest {
       pricePullTargetRepository,
       priceProviderConfigRepository,
       assetPriceSnapshotRepository,
-      properties
+      properties,
+      new SimpleMeterRegistry()
     );
     AtomicBoolean running = (AtomicBoolean) ReflectionTestUtils.getField(job, "running");
     running.set(true);
