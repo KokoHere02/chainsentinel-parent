@@ -789,7 +789,8 @@ public class SolanaBalanceWsSubscriptionService {
 				if (webSocket != null) {
 					webSocket.sendClose(WebSocket.NORMAL_CLOSURE, "closing").join();
 				}
-			} catch (Exception ignored) {
+			} catch (Exception ex) {
+				log.warn("sol.ws.balance.connection.close.failed wsUrl={} error={}", wsUrl, ex.getMessage());
 			}
 		}
 

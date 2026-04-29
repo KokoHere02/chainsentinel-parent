@@ -32,7 +32,8 @@ public class GlobalExceptionHandler {
 		List<String> details = ex.getBindingResult().getFieldErrors().stream()
 			.map(this::toFieldError)
 			.collect(Collectors.toList());
-		return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request validation failed", request, details);
+		logHandled(HttpStatus.BAD_REQUEST, ApiErrorCode.VALIDATION_ERROR, "Request validation failed", request);
+		return build(HttpStatus.BAD_REQUEST, ApiErrorCode.VALIDATION_ERROR, "Request validation failed", request, details);
 	}
 
 	@ExceptionHandler(BindException.class)
@@ -43,7 +44,8 @@ public class GlobalExceptionHandler {
 		List<String> details = ex.getBindingResult().getFieldErrors().stream()
 			.map(this::toFieldError)
 			.collect(Collectors.toList());
-		return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request binding failed", request, details);
+		logHandled(HttpStatus.BAD_REQUEST, ApiErrorCode.VALIDATION_ERROR, "Request binding failed", request);
+		return build(HttpStatus.BAD_REQUEST, ApiErrorCode.VALIDATION_ERROR, "Request binding failed", request, details);
 	}
 
 	@ExceptionHandler(ConstraintViolationException.class)
@@ -54,7 +56,8 @@ public class GlobalExceptionHandler {
 		List<String> details = ex.getConstraintViolations().stream()
 			.map(v -> v.getPropertyPath() + ": " + v.getMessage())
 			.toList();
-		return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request validation failed", request, details);
+		logHandled(HttpStatus.BAD_REQUEST, ApiErrorCode.VALIDATION_ERROR, "Request validation failed", request);
+		return build(HttpStatus.BAD_REQUEST, ApiErrorCode.VALIDATION_ERROR, "Request validation failed", request, details);
 	}
 
 	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -63,9 +66,10 @@ public class GlobalExceptionHandler {
 		HttpServletRequest request
 	) {
 		String detail = ex.getName() + ": invalid value " + ex.getValue();
+		logHandled(HttpStatus.BAD_REQUEST, ApiErrorCode.TYPE_MISMATCH, "Request parameter type mismatch", request);
 		return build(
 		HttpStatus.BAD_REQUEST,
-		"TYPE_MISMATCH",
+		ApiErrorCode.TYPE_MISMATCH,
 		"Request parameter type mismatch",
 		request,
 		List.of(detail)
@@ -77,9 +81,10 @@ public class GlobalExceptionHandler {
 		HttpMessageNotReadableException ex,
 		HttpServletRequest request
 	) {
+		logHandled(HttpStatus.BAD_REQUEST, ApiErrorCode.INVALID_REQUEST_BODY, "Request body is invalid or unreadable", request);
 		return build(
 		HttpStatus.BAD_REQUEST,
-		"INVALID_REQUEST_BODY",
+		ApiErrorCode.INVALID_REQUEST_BODY,
 		"Request body is invalid or unreadable",
 		request,
 		List.of()
@@ -89,6 +94,7 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(AppException.class)
 	public ResponseEntity<ApiErrorResponse> handleAppException(AppException ex, HttpServletRequest request) {
 		HttpStatus status = HttpStatus.valueOf(ex.getStatus());
+		logHandled(status, ex.getCode(), ex.getMessage(), request);
 		return build(status, ex.getCode(), ex.getMessage(), request, List.of());
 	}
 
@@ -97,7 +103,8 @@ public class GlobalExceptionHandler {
 		IllegalArgumentException ex,
 		HttpServletRequest request
 	) {
-		return build(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT", ex.getMessage(), request, List.of());
+		logHandled(HttpStatus.BAD_REQUEST, ApiErrorCode.INVALID_ARGUMENT, ex.getMessage(), request);
+		return build(HttpStatus.BAD_REQUEST, ApiErrorCode.INVALID_ARGUMENT, ex.getMessage(), request, List.of());
 	}
 
 	@ExceptionHandler(ResponseStatusException.class)
@@ -108,7 +115,8 @@ public class GlobalExceptionHandler {
 		HttpStatusCode statusCode = ex.getStatusCode();
 		HttpStatus status = HttpStatus.valueOf(statusCode.value());
 		String message = ex.getReason() == null ? status.getReasonPhrase() : ex.getReason();
-		return build(status, "HTTP_ERROR", message, request, List.of());
+		logHandled(status, ApiErrorCode.HTTP_ERROR, message, request);
+		return build(status, ApiErrorCode.HTTP_ERROR, message, request, List.of());
 	}
 
 	@ExceptionHandler(Exception.class)
@@ -119,10 +127,10 @@ public class GlobalExceptionHandler {
 			requestId,
 			request.getMethod(),
 			request.getRequestURI(),
-			ex.getMessage(),
+			LogSanitizer.sanitizeMessage(ex.getMessage()),
 			ex
 		);
-		return build(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error", request, List.of());
+		return build(HttpStatus.INTERNAL_SERVER_ERROR, ApiErrorCode.INTERNAL_ERROR, "Internal server error", request, List.of());
 	}
 
 	private String toFieldError(FieldError fieldError) {
@@ -137,15 +145,53 @@ public class GlobalExceptionHandler {
 		HttpServletRequest request,
 		List<String> details
 	) {
+		String requestId = readRequestId(request);
 		ApiErrorResponse body = ApiErrorResponse.of(
 			status.value(),
 			status.getReasonPhrase(),
 			code,
 			message,
 			request.getRequestURI(),
-			details
+			details,
+			requestId
 		);
 		return ResponseEntity.status(status).body(body);
+	}
+
+	private ResponseEntity<ApiErrorResponse> build(
+		HttpStatus status,
+		ApiErrorCode code,
+		String message,
+		HttpServletRequest request,
+		List<String> details
+	) {
+		return build(status, code.value(), message, request, details);
+	}
+
+	private void logHandled(
+		HttpStatus status,
+		String code,
+		String message,
+		HttpServletRequest request
+	) {
+		log.warn(
+			"api.error traceId={} status={} code={} method={} path={} message={}",
+			readRequestId(request),
+			status.value(),
+			code,
+			request.getMethod(),
+			request.getRequestURI(),
+			LogSanitizer.sanitizeMessage(message)
+		);
+	}
+
+	private void logHandled(
+		HttpStatus status,
+		ApiErrorCode code,
+		String message,
+		HttpServletRequest request
+	) {
+		logHandled(status, code.value(), message, request);
 	}
 
 	private String readRequestId(HttpServletRequest request) {

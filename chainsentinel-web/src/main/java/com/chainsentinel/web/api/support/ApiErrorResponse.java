@@ -10,7 +10,8 @@ public record ApiErrorResponse(
 	String code,
 	String message,
 	String path,
-	List<String> details
+	List<String> details,
+	String traceId
 ) {
 
 	public static ApiErrorResponse of(
@@ -19,7 +20,8 @@ public record ApiErrorResponse(
 		String code,
 		String message,
 		String path,
-		List<String> details
+		List<String> details,
+		String traceId
 	) {
 		return new ApiErrorResponse(
 			Instant.now(),
@@ -28,7 +30,8 @@ public record ApiErrorResponse(
 			code,
 			message,
 			path,
-			details == null ? List.of() : details
+			details == null ? List.of() : details,
+			traceId
 		);
 	}
 }

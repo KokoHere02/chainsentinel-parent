@@ -2,17 +2,25 @@ package com.chainsentinel.core.exception;
 
 public class AppException extends RuntimeException {
 
-	private final String code;
+	private final CoreErrorCode errorCode;
 	private final int status;
 
-	public AppException(String code, int status, String message) {
+	public AppException(CoreErrorCode errorCode, int status, String message) {
 		super(message);
-		this.code = code;
+		this.errorCode = errorCode == null ? CoreErrorCode.UNKNOWN_ERROR : errorCode;
 		this.status = status;
 	}
 
+	public AppException(String code, int status, String message) {
+		this(CoreErrorCode.from(code), status, message);
+	}
+
 	public String getCode() {
-		return code;
+		return errorCode.value();
+	}
+
+	public CoreErrorCode getErrorCode() {
+		return errorCode;
 	}
 
 	public int getStatus() {

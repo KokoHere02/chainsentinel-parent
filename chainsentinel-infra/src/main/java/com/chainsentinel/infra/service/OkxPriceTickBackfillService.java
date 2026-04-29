@@ -201,8 +201,9 @@ public class OkxPriceTickBackfillService {
 		try {
 			Thread.sleep(sleepMs);
 			return false;
-		} catch (InterruptedException ignored) {
+		} catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();
+			log.warn("price.tick.backfill.okx.interrupted sleepMs={} error={}", sleepMs, ex.getMessage());
 			state.stopReason = "interrupted";
 			return true;
 		}

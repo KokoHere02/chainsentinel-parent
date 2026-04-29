@@ -7,6 +7,8 @@ import com.chainsentinel.infra.service.SolanaBalanceWsSubscriptionService;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +22,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Validated
 public class DashboardController {
 
+	private static final Logger log = LoggerFactory.getLogger(DashboardController.class);
 	private final DashboardQueryService dashboardQueryService;
 
 	public DashboardController(DashboardQueryService dashboardQueryService) {
@@ -163,7 +166,8 @@ public class DashboardController {
 			if (normalized.endsWith("d")) {
 				return Duration.ofDays(Long.parseLong(normalized.substring(0, normalized.length() - 1)));
 			}
-		} catch (Exception ignored) {
+		} catch (NumberFormatException ex) {
+			log.debug("dashboard.window.parse.failed window={} error={}", window, ex.getMessage());
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid window format, examples: 15m, 24h, 7d");
 		}
 		throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid window format, examples: 15m, 24h, 7d");

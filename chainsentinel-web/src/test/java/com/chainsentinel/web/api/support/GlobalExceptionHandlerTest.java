@@ -31,7 +31,8 @@ class GlobalExceptionHandlerTest {
       .andExpect(status().isBadRequest())
       .andExpect(jsonPath("$.code").value("INVALID_ARGUMENT"))
       .andExpect(jsonPath("$.message").value("bad input"))
-      .andExpect(jsonPath("$.path").value("/test/bad-request"));
+      .andExpect(jsonPath("$.path").value("/test/bad-request"))
+      .andExpect(jsonPath("$.traceId").value("-"));
   }
 
   @Test
@@ -39,7 +40,8 @@ class GlobalExceptionHandlerTest {
     mockMvc.perform(get("/test/not-found"))
       .andExpect(status().isNotFound())
       .andExpect(jsonPath("$.code").value("NOT_FOUND"))
-      .andExpect(jsonPath("$.message").value("rule not found"));
+      .andExpect(jsonPath("$.message").value("rule not found"))
+      .andExpect(jsonPath("$.traceId").value("-"));
   }
 
   @Test
@@ -47,7 +49,8 @@ class GlobalExceptionHandlerTest {
     mockMvc.perform(get("/test/crash"))
       .andExpect(status().isInternalServerError())
       .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
-      .andExpect(jsonPath("$.message").value("Internal server error"));
+      .andExpect(jsonPath("$.message").value("Internal server error"))
+      .andExpect(jsonPath("$.traceId").value("-"));
   }
 
   @RestController
