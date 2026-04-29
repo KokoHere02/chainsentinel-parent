@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "chainsentinel.price.tick-retention")
 public class PriceTickRetentionProperties {
 
-	private boolean enabled = true;
+	private boolean enabled = false;
 	private int retentionDays = 30;
 	private long cleanupIntervalMs = 3600000L;
 

@@ -81,12 +81,12 @@ public class AddressHoldingSnapshotService {
 	public SnapshotResult refreshNativeHoldings(String chainFilter, String networkFilter, String addressFilter) {
 		List<MonitorAddressScopeEntity> enabledScopes = monitorAddressScopeRepository.findByEnabledTrue();
 		if (enabledScopes.isEmpty()) {
-			log.info("holding.snapshot skipped: no enabled address scopes");
+			log.info("holding.snapshot.skip reason=no_enabled_address_scopes");
 			return new SnapshotResult(0, 0, 0);
 		}
 		List<MonitorAddressScopeEntity> filteredScopes = filterScopes(enabledScopes, chainFilter, networkFilter);
 		if (filteredScopes.isEmpty()) {
-			log.info("holding.snapshot skipped: no scopes match filter chain={} network={}", chainFilter, networkFilter);
+			log.info("holding.snapshot.skip reason=no_scope_match_filter chain={} network={}", chainFilter, networkFilter);
 			return new SnapshotResult(0, 0, 0);
 		}
 
@@ -95,7 +95,7 @@ public class AddressHoldingSnapshotService {
 			.stream()
 			.collect(Collectors.toMap(MonitorAddressEntity::getId, item -> item));
 		if (addressMap.isEmpty()) {
-			log.info("holding.snapshot skipped: no enabled monitor addresses");
+			log.info("holding.snapshot.skip reason=no_enabled_monitor_addresses");
 			return new SnapshotResult(0, 0, 0);
 		}
 
@@ -107,7 +107,7 @@ public class AddressHoldingSnapshotService {
 				LinkedHashMap::new
 			));
 		if (chainConfigMap.isEmpty()) {
-			log.info("holding.snapshot skipped: no enabled chain config");
+			log.info("holding.snapshot.skip reason=no_enabled_chain_config");
 			return new SnapshotResult(0, 0, 0);
 		}
 
@@ -128,18 +128,18 @@ public class AddressHoldingSnapshotService {
 			int chainFailed = 0;
 			ChainConfigEntity chainConfig = chainConfigMap.get(entry.getKey());
 			if (chainConfig == null) {
-				log.info("holding.snapshot skipped chainNetwork={} reason=no_enabled_chain_config", entry.getKey());
+				log.info("holding.snapshot.skip chainNetwork={} reason=no_enabled_chain_config", entry.getKey());
 				continue;
 			}
 			String chain = normalizeText(chainConfig.getChain());
 			String network = normalizeText(chainConfig.getNetwork());
 			if (shouldUseSolanaWsBalance(chainConfig, chain, network)) {
-				log.info("holding.snapshot skip {}-{}: sol ws balance mode enabled", chain, network);
+				log.info("holding.snapshot.skip chain={} network={} reason=sol_ws_balance_mode_enabled", chain, network);
 				continue;
 			}
 			String rpcUrl = resolveBalanceRpcUrl(chainConfig, chain, network);
 			if (!StringUtils.hasText(rpcUrl)) {
-				log.warn("holding.snapshot skip {}-{}: rpc url empty", chain, network);
+				log.warn("holding.snapshot.skip chain={} network={} reason=rpc_url_empty", chain, network);
 				continue;
 			}
 				if (isSolanaChain(chain)) {
@@ -155,7 +155,7 @@ public class AddressHoldingSnapshotService {
 						if (normalizedAddress == null) {
 							failed++;
 							chainFailed++;
-						log.warn("holding.snapshot skip invalid address id={} address={}",
+						log.warn("holding.snapshot.skip reason=invalid_address id={} address={}",
 							monitorAddress.getId(), monitorAddress.getAddress());
 						continue;
 					}
@@ -188,7 +188,7 @@ public class AddressHoldingSnapshotService {
 							if (normalizedAddress == null) {
 								failed++;
 								chainFailed++;
-							log.warn("holding.snapshot skip invalid address id={} address={}",
+							log.warn("holding.snapshot.skip reason=invalid_address id={} address={}",
 								monitorAddress.getId(), monitorAddress.getAddress());
 							continue;
 						}
@@ -366,7 +366,7 @@ public class AddressHoldingSnapshotService {
 			if (StringUtils.hasText(wsRpc)) {
 				return wsRpc;
 			}
-			log.warn("holding.snapshot fallback to http rpc because ws rpc is empty: chain={} network={}", chain, network);
+			log.warn("holding.snapshot.ws.fallback_http chain={} network={} reason=ws_rpc_empty", chain, network);
 		}
 
 		String httpRpc = decryptUrl(chainConfig.getRpcHttpUrl(), chain, network);
@@ -455,7 +455,7 @@ public class AddressHoldingSnapshotService {
 			session.client.web3j().ethBlockNumber().send();
 			session.lastHeartbeatAtMs = now;
 		} catch (Exception ex) {
-			log.warn("holding.snapshot ws heartbeat failed chain={} network={}: {}", chain, network, ex.getMessage());
+			log.warn("holding.snapshot.ws.heartbeat.failed chain={} network={} error={}", chain, network, ex.getMessage());
 			session.reconnect(web3jClientFactory);
 			session.lastHeartbeatAtMs = System.currentTimeMillis();
 		}

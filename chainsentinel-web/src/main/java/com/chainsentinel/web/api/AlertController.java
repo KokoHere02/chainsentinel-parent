@@ -63,7 +63,7 @@ public class AlertController {
 
 	@PostMapping("/handler")
 	public Map<String, String> handlerAlert(@RequestBody String json) {
-		log.info("handler Alert Received: {}", json);
+		log.info("alert.handler.received payloadBytes={}", json == null ? 0 : json.length());
 		return Map.of("code", "200");
 	}
 
