@@ -9,11 +9,11 @@ COPY chainsentinel-infra/pom.xml chainsentinel-infra/pom.xml
 COPY chainsentinel-price/pom.xml chainsentinel-price/pom.xml
 COPY chainsentinel-web/pom.xml chainsentinel-web/pom.xml
 
-RUN mvn -q -pl chainsentinel-web -am -DskipTests dependency:go-offline
+RUN mvn -pl chainsentinel-web -am -DskipTests dependency:go-offline
 
 COPY . .
 
-RUN mvn -q -pl chainsentinel-web -am -DskipTests package
+RUN mvn -pl chainsentinel-web -am -DskipTests package
 
 FROM eclipse-temurin:17-jre-jammy
 

@@ -20,7 +20,7 @@ services:
       JAVA_OPTS: ${JAVA_OPTS:--Xms512m -Xmx512m}
 
   mysql:
-    image: mysql:8.4
+    image: mysql:8.0
     container_name: chainsentinel-mysql
     restart: unless-stopped
     ports:
@@ -30,7 +30,7 @@ services:
       MYSQL_DATABASE: chainsentinel
       TZ: UTC
     volumes:
-      - mysql_data:/var/lib/mysql
+      - mysql_data_v2:/var/lib/mysql
 
   prometheus:
     image: prom/prometheus:v2.53.1
@@ -48,6 +48,6 @@ services:
       - prometheus_data:/prometheus
 
 volumes:
-  mysql_data:
+  mysql_data_v2:
   prometheus_data:
 
