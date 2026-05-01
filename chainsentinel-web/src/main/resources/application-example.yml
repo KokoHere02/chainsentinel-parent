@@ -20,6 +20,13 @@ spring:
 chainsentinel:
   web:
     allowed-origins: http://localhost:5173
+  auth:
+    jwt-secret: change-me-in-production
+    access-token-ttl-seconds: 7200
+    refresh-token-ttl-seconds: 604800
+    login-fail-max-attempts: 5
+    login-fail-window-seconds: 300
+    login-lock-seconds: 600
   debug:
     rule-test-match-enabled: true
   security:

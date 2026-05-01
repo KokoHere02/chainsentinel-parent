@@ -1,6 +1,7 @@
 package com.chainsentinel.web;
 
 import com.chainsentinel.web.api.support.ratelimit.RateLimitInterceptor;
+import com.chainsentinel.web.auth.AuthInterceptor;
 import java.util.Arrays;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,13 +16,16 @@ public class WebCorsConfig implements WebMvcConfigurer {
 	private static final String DEFAULT_ALLOWED_ORIGIN = "http://localhost:5173";
 
 	private final RateLimitInterceptor rateLimitInterceptor;
+	private final AuthInterceptor authInterceptor;
 	private final String[] allowedOrigins;
 
 	public WebCorsConfig(
 		RateLimitInterceptor rateLimitInterceptor,
+		AuthInterceptor authInterceptor,
 		@Value("${chainsentinel.web.allowed-origins:http://localhost:5173}") String allowedOriginsValue
 	) {
 		this.rateLimitInterceptor = rateLimitInterceptor;
+		this.authInterceptor = authInterceptor;
 		this.allowedOrigins = parseAllowedOrigins(allowedOriginsValue);
 	}
 
@@ -38,6 +42,13 @@ public class WebCorsConfig implements WebMvcConfigurer {
 	@Override
 	public void addInterceptors(InterceptorRegistry registry) {
 		registry.addInterceptor(rateLimitInterceptor);
+		registry.addInterceptor(authInterceptor)
+			.addPathPatterns("/api/**")
+			.excludePathPatterns(
+				"/api/auth/login",
+				"/api/health",
+				"/api/internal/**"
+			);
 	}
 
 	private String[] parseAllowedOrigins(String value) {

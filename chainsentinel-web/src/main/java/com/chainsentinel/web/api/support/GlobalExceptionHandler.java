@@ -1,6 +1,9 @@
 package com.chainsentinel.web.api.support;
 
 import com.chainsentinel.core.exception.AppException;
+import com.chainsentinel.web.auth.AuthException;
+import com.chainsentinel.web.auth.audit.AuditEvent;
+import com.chainsentinel.web.auth.audit.AuditEventPublisher;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import java.util.List;
@@ -23,6 +26,15 @@ import org.springframework.web.server.ResponseStatusException;
 public class GlobalExceptionHandler {
 
 	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+	private final AuditEventPublisher auditEventPublisher;
+
+	public GlobalExceptionHandler() {
+		this.auditEventPublisher = null;
+	}
+
+	public GlobalExceptionHandler(AuditEventPublisher auditEventPublisher) {
+		this.auditEventPublisher = auditEventPublisher;
+	}
 
 	@ExceptionHandler(MethodArgumentNotValidException.class)
 	public ResponseEntity<ApiErrorResponse> handleMethodArgumentNotValid(
@@ -107,6 +119,15 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.BAD_REQUEST, ApiErrorCode.INVALID_ARGUMENT, ex.getMessage(), request, List.of());
 	}
 
+	@ExceptionHandler(AuthException.class)
+	public ResponseEntity<ApiErrorResponse> handleAuthException(AuthException ex, HttpServletRequest request) {
+		HttpStatus status = ex.getStatus();
+		String code = ex.getErrorCode().name();
+		String message = ex.getMessage();
+		logHandled(status, code, message, request);
+		return build(status, code, message, request, List.of());
+	}
+
 	@ExceptionHandler(ResponseStatusException.class)
 	public ResponseEntity<ApiErrorResponse> handleResponseStatus(
 		ResponseStatusException ex,
@@ -145,6 +166,7 @@ public class GlobalExceptionHandler {
 		HttpServletRequest request,
 		List<String> details
 	) {
+		publishOrderCreateFailIfNeeded(status, message, request);
 		String requestId = readRequestId(request);
 		ApiErrorResponse body = ApiErrorResponse.of(
 			status.value(),
@@ -197,5 +219,32 @@ public class GlobalExceptionHandler {
 	private String readRequestId(HttpServletRequest request) {
 		Object value = request.getAttribute(RequestTraceFilter.REQUEST_ATTR_REQUEST_ID);
 		return value == null ? "-" : String.valueOf(value);
+	}
+
+	private void publishOrderCreateFailIfNeeded(HttpStatus status, String message, HttpServletRequest request) {
+		if (auditEventPublisher == null) {
+			return;
+		}
+		if (!status.isError()) {
+			return;
+		}
+		if (!"POST".equalsIgnoreCase(request.getMethod())) {
+			return;
+		}
+		if (!"/api/orders".equals(request.getRequestURI())) {
+			return;
+		}
+		String traceId = readRequestId(request);
+		auditEventPublisher.publish(new AuditEvent(
+			"ORDER_CREATE_FAIL",
+			null,
+			null,
+			"FAIL",
+			LogSanitizer.sanitizeMessage(message),
+			traceId,
+			request.getRemoteAddr(),
+			request.getRequestURI(),
+			request.getMethod()
+		));
 	}
 }
