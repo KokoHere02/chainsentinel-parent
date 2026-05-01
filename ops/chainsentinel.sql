@@ -356,4 +356,109 @@ CREATE TABLE `scan_checkpoint`  (
   UNIQUE INDEX `uk_scan_chain_network`(`chain_name` ASC, `network` ASC) USING BTREE
 ) ENGINE = InnoDB AUTO_INCREMENT = 5 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Scanner checkpoint by chain/network' ROW_FORMAT = Dynamic;
 
+-- ----------------------------
+-- Table structure for auth_user
+-- ----------------------------
+DROP TABLE IF EXISTS `auth_user`;
+CREATE TABLE `auth_user`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `username` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Login username, globally unique',
+  `password_hash` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Password hash (BCrypt or Argon2)',
+  `enabled` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Whether account is enabled: 1 enabled, 0 disabled',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Account creation time',
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Account last update time',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_auth_user_username`(`username` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'System user account table' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for auth_role
+-- ----------------------------
+DROP TABLE IF EXISTS `auth_role`;
+CREATE TABLE `auth_role`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `role_code` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Role code enum value, e.g. ADMIN/OPERATOR/TRADER',
+  `role_name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT '' COMMENT 'Role display name',
+  `enabled` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Whether role is enabled: 1 enabled, 0 disabled',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Role creation time',
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Role last update time',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_auth_role_code`(`role_code` ASC) USING BTREE
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'System role table' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for auth_user_role
+-- ----------------------------
+DROP TABLE IF EXISTS `auth_user_role`;
+CREATE TABLE `auth_user_role`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `user_id` bigint NOT NULL COMMENT 'Related auth_user.id',
+  `role_id` bigint NOT NULL COMMENT 'Related auth_role.id',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Binding creation time',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_auth_user_role_user_role`(`user_id` ASC, `role_id` ASC) USING BTREE,
+  INDEX `idx_auth_user_role_role_id`(`role_id` ASC) USING BTREE,
+  CONSTRAINT `fk_auth_user_role_user_id` FOREIGN KEY (`user_id`) REFERENCES `auth_user` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `fk_auth_user_role_role_id` FOREIGN KEY (`role_id`) REFERENCES `auth_role` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'User-role mapping table' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for auth_refresh_token
+-- ----------------------------
+DROP TABLE IF EXISTS `auth_refresh_token`;
+CREATE TABLE `auth_refresh_token`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `user_id` bigint NOT NULL COMMENT 'Related auth_user.id',
+  `token_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Refresh token unique identifier (JTI)',
+  `expires_at` timestamp NOT NULL COMMENT 'Refresh token expiration time',
+  `revoked` bit(1) NOT NULL DEFAULT b'0' COMMENT 'Whether token is revoked: 1 revoked, 0 active',
+  `issued_ip` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Client IP at token issuance',
+  `issued_ua` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Client user-agent at token issuance',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Token issuance record time',
+  `revoked_at` timestamp NULL DEFAULT NULL COMMENT 'Token revocation time',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_auth_refresh_token_token_id`(`token_id` ASC) USING BTREE,
+  INDEX `idx_auth_refresh_token_user_id`(`user_id` ASC) USING BTREE,
+  INDEX `idx_auth_refresh_token_expires_at`(`expires_at` ASC) USING BTREE,
+  CONSTRAINT `fk_auth_refresh_token_user_id` FOREIGN KEY (`user_id`) REFERENCES `auth_user` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Refresh token storage for token rotation and revocation' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for auth_audit_log
+-- ----------------------------
+DROP TABLE IF EXISTS `auth_audit_log`;
+CREATE TABLE `auth_audit_log`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `user_id` bigint NULL DEFAULT NULL COMMENT 'Related auth_user.id, NULL for anonymous requests',
+  `username` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Username snapshot at operation time',
+  `action` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'UNKNOWN' COMMENT 'Security action code, e.g. LOGIN_SUCCESS/LOGIN_FAIL/ORDER_CREATE',
+  `resource` varchar(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Target resource identifier or business key',
+  `result` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'SUCCESS' COMMENT 'Operation result: SUCCESS/FAIL',
+  `reason` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT 'Failure reason or supplemental note',
+  `trace_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Request trace identifier for cross-service correlation',
+  `request_ip` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Requester source IP',
+  `request_path` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT '' COMMENT 'Requested API path',
+  `request_method` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT 'UNKNOWN' COMMENT 'Requested HTTP method',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Audit event creation time',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_auth_audit_log_user_created_at`(`user_id` ASC, `created_at` ASC) USING BTREE,
+  INDEX `idx_auth_audit_log_action_created_at`(`action` ASC, `created_at` ASC) USING BTREE,
+  INDEX `idx_auth_audit_log_trace_id`(`trace_id` ASC) USING BTREE,
+  CONSTRAINT `fk_auth_audit_log_user_id` FOREIGN KEY (`user_id`) REFERENCES `auth_user` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Security audit log for authentication and authorization events' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Default seed data for auth tables
+-- ----------------------------
+INSERT INTO `auth_role` (`id`, `role_code`, `role_name`, `enabled`, `created_at`) VALUES
+(1, 'ADMIN', 'Administrator', b'1', CURRENT_TIMESTAMP),
+(2, 'OPERATOR', 'Operator', b'1', CURRENT_TIMESTAMP),
+(3, 'TRADER', 'Trader', b'1', CURRENT_TIMESTAMP);
+
+INSERT INTO `auth_user` (`id`, `username`, `password_hash`, `enabled`, `created_at`, `updated_at`) VALUES
+(1, 'admin', '$2a$10$7EqJtq98hPqEX7fNZaFWoO5j6N6byN1Nsx3Rp3XIanFkFJxuxMxDP', b'1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+INSERT INTO `auth_user_role` (`id`, `user_id`, `role_id`, `created_at`) VALUES
+(1, 1, 1, CURRENT_TIMESTAMP);
+
 SET FOREIGN_KEY_CHECKS = 1;
