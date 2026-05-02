@@ -28,9 +28,6 @@ public class AuthRoleEntity {
 	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
 	private Instant createdAt;
 
-	@Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
-	private Instant updatedAt;
-
 	public Long getId() {
 		return id;
 	}
@@ -63,7 +60,4 @@ public class AuthRoleEntity {
 		return createdAt;
 	}
 
-	public Instant getUpdatedAt() {
-		return updatedAt;
-	}
 }

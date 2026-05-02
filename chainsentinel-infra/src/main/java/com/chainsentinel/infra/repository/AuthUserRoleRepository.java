@@ -18,4 +18,8 @@ public interface AuthUserRoleRepository extends JpaRepository<AuthUserRoleEntity
 		nativeQuery = true
 	)
 	List<String> findRoleCodesByUserId(@Param("userId") Long userId);
+
+	List<AuthUserRoleEntity> findByUserId(Long userId);
+
+	void deleteByUserId(Long userId);
 }
