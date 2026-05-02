@@ -50,6 +50,8 @@ class AuthServiceTest {
 	private AuditEventPublisher auditEventPublisher;
 
 	private AuthService authService;
+	private PasswordPolicyValidator passwordPolicyValidator;
+	private UsernamePolicyValidator usernamePolicyValidator;
 
 	@BeforeEach
 	void setUp() {
@@ -60,6 +62,9 @@ class AuthServiceTest {
 		properties.setLoginFailMaxAttempts(2);
 		properties.setLoginFailWindowSeconds(300);
 		properties.setLoginLockSeconds(60);
+		properties.setPasswordMinLength(10);
+		passwordPolicyValidator = new PasswordPolicyValidator(properties);
+		usernamePolicyValidator = new UsernamePolicyValidator();
 		JwtTokenService jwtTokenService = new JwtTokenService(new ObjectMapper(), properties);
 		authService = new AuthService(
 			authUserRepository,
@@ -67,6 +72,8 @@ class AuthServiceTest {
 			authRefreshTokenRepository,
 			authAuditLogRepository,
 			auditEventPublisher,
+			passwordPolicyValidator,
+			usernamePolicyValidator,
 			jwtTokenService,
 			properties
 		);
@@ -77,11 +84,11 @@ class AuthServiceTest {
 
 	@Test
 	void shouldLoginSuccess() {
-		AuthUserEntity user = buildUser(1L, "admin", "admin123");
+		AuthUserEntity user = buildUser(1L, "admin", "Admin12345");
 		when(authUserRepository.findByUsernameAndEnabledTrue("admin")).thenReturn(Optional.of(user));
 		when(authUserRoleRepository.findRoleCodesByUserId(1L)).thenReturn(List.of("ADMIN"));
 
-		AuthService.LoginResult result = authService.login("admin", "admin123", request, "t1");
+		AuthService.LoginResult result = authService.login("admin", "Admin12345", request, "t1");
 
 		assertNotNull(result.accessToken());
 		assertNotNull(result.refreshToken());
@@ -109,7 +116,7 @@ class AuthServiceTest {
 		oldToken.setTokenId("old-r");
 		oldToken.setRevoked(false);
 		oldToken.setExpiresAt(Instant.now().plusSeconds(120));
-		AuthUserEntity user = buildUser(1L, "admin", "admin123");
+		AuthUserEntity user = buildUser(1L, "admin", "Admin12345");
 
 		when(authRefreshTokenRepository.findByTokenIdAndRevokedFalse("old-r")).thenReturn(Optional.of(oldToken));
 		when(authUserRepository.findByIdAndEnabledTrue(1L)).thenReturn(Optional.of(user));
@@ -226,7 +233,7 @@ class AuthServiceTest {
 
 	@Test
 	void shouldChangePasswordAndRevokeSessions() {
-		AuthUserEntity user = buildUser(1L, "admin", "old-password");
+		AuthUserEntity user = buildUser(1L, "admin", "OldPassword1");
 		AuthRefreshTokenEntity token = new AuthRefreshTokenEntity();
 		token.setUserId(1L);
 		token.setTokenId("r1");
@@ -235,9 +242,9 @@ class AuthServiceTest {
 		when(authUserRepository.findById(1L)).thenReturn(Optional.of(user));
 		when(authRefreshTokenRepository.findByUserIdAndRevokedFalseAndExpiresAtAfter(eq(1L), any())).thenReturn(List.of(token));
 
-		authService.changePassword(1L, "old-password", "new-password", request, "t8");
+		authService.changePassword(1L, "OldPassword1", "NewPassword1", request, "t8");
 
-		assertTrue(BCrypt.checkpw("new-password", user.getPasswordHash()));
+		assertTrue(BCrypt.checkpw("NewPassword1", user.getPasswordHash()));
 		assertTrue(Boolean.TRUE.equals(token.getRevoked()));
 		verify(authUserRepository).save(user);
 		verify(authRefreshTokenRepository).saveAll(List.of(token));
@@ -245,15 +252,28 @@ class AuthServiceTest {
 
 	@Test
 	void shouldRejectInvalidCurrentPassword() {
-		AuthUserEntity user = buildUser(1L, "admin", "old-password");
+		AuthUserEntity user = buildUser(1L, "admin", "OldPassword1");
 		when(authUserRepository.findById(1L)).thenReturn(Optional.of(user));
 
 		AuthException ex = assertThrows(
 			AuthException.class,
-			() -> authService.changePassword(1L, "bad-password", "new-password", request, "t9")
+			() -> authService.changePassword(1L, "BadPassword1", "NewPassword1", request, "t9")
 		);
 
 		assertEquals(AuthErrorCode.AUTH_PASSWORD_INVALID, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldRejectWeakNewPassword() {
+		AuthUserEntity user = buildUser(1L, "admin", "OldPassword1");
+		when(authUserRepository.findById(1L)).thenReturn(Optional.of(user));
+
+		AuthException ex = assertThrows(
+			AuthException.class,
+			() -> authService.changePassword(1L, "OldPassword1", "weak", request, "t10")
+		);
+
+		assertEquals(AuthErrorCode.AUTH_PASSWORD_WEAK, ex.getErrorCode());
 	}
 
 	@Test
@@ -272,6 +292,18 @@ class AuthServiceTest {
 
 		assertEquals(1, logs.size());
 		assertEquals("LOGIN_SUCCESS", logs.get(0).action());
+	}
+
+	@Test
+	void shouldNormalizeUsernameOnLogin() {
+		AuthUserEntity user = buildUser(1L, "alice", "Admin12345");
+		when(authUserRepository.findByUsernameAndEnabledTrue("alice")).thenReturn(Optional.of(user));
+		when(authUserRoleRepository.findRoleCodesByUserId(1L)).thenReturn(List.of("ADMIN"));
+
+		AuthService.LoginResult result = authService.login(" Alice ", "Admin12345", request, "t11");
+
+		assertEquals("alice", result.username());
+		verify(authUserRepository).findByUsernameAndEnabledTrue("alice");
 	}
 
 	private AuthUserEntity buildUser(Long id, String username, String rawPassword) {

@@ -31,6 +31,7 @@ chainsentinel:
     login-fail-max-attempts: ${CHAINSENTINEL_AUTH_LOGIN_FAIL_MAX_ATTEMPTS:5}
     login-fail-window-seconds: ${CHAINSENTINEL_AUTH_LOGIN_FAIL_WINDOW_SECONDS:300}
     login-lock-seconds: ${CHAINSENTINEL_AUTH_LOGIN_LOCK_SECONDS:600}
+    password-min-length: ${CHAINSENTINEL_AUTH_PASSWORD_MIN_LENGTH:10}
   web:
     allowed-origins: ${WEB_ALLOWED_ORIGINS:http://localhost:5173}
 

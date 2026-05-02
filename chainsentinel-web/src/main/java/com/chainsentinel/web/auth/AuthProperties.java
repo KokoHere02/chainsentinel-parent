@@ -13,6 +13,7 @@ public class AuthProperties {
 	private int loginFailMaxAttempts = 5;
 	private long loginFailWindowSeconds = 300;
 	private long loginLockSeconds = 600;
+	private int passwordMinLength = 10;
 
 	public String getJwtSecret() {
 		return jwtSecret;
@@ -60,5 +61,13 @@ public class AuthProperties {
 
 	public void setLoginLockSeconds(long loginLockSeconds) {
 		this.loginLockSeconds = loginLockSeconds;
+	}
+
+	public int getPasswordMinLength() {
+		return passwordMinLength;
+	}
+
+	public void setPasswordMinLength(int passwordMinLength) {
+		this.passwordMinLength = passwordMinLength;
 	}
 }

@@ -29,6 +29,8 @@ public class AuthService {
 	private final AuthRefreshTokenRepository authRefreshTokenRepository;
 	private final AuthAuditLogRepository authAuditLogRepository;
 	private final AuditEventPublisher auditEventPublisher;
+	private final PasswordPolicyValidator passwordPolicyValidator;
+	private final UsernamePolicyValidator usernamePolicyValidator;
 	private final JwtTokenService jwtTokenService;
 	private final AuthProperties authProperties;
 	private final ConcurrentHashMap<String, LoginFailState> loginFailStates = new ConcurrentHashMap<>();
@@ -39,6 +41,8 @@ public class AuthService {
 		AuthRefreshTokenRepository authRefreshTokenRepository,
 		AuthAuditLogRepository authAuditLogRepository,
 		AuditEventPublisher auditEventPublisher,
+		PasswordPolicyValidator passwordPolicyValidator,
+		UsernamePolicyValidator usernamePolicyValidator,
 		JwtTokenService jwtTokenService,
 		AuthProperties authProperties
 	) {
@@ -47,15 +51,18 @@ public class AuthService {
 		this.authRefreshTokenRepository = authRefreshTokenRepository;
 		this.authAuditLogRepository = authAuditLogRepository;
 		this.auditEventPublisher = auditEventPublisher;
+		this.passwordPolicyValidator = passwordPolicyValidator;
+		this.usernamePolicyValidator = usernamePolicyValidator;
 		this.jwtTokenService = jwtTokenService;
 		this.authProperties = authProperties;
 	}
 
 	public LoginResult login(String username, String password, HttpServletRequest request, String traceId) {
-		String failKey = buildFailKey(username, request.getRemoteAddr());
+		String normalizedUsername = usernamePolicyValidator.normalize(username);
+		String failKey = buildFailKey(normalizedUsername, request.getRemoteAddr());
 		checkLoginLocked(failKey);
-		AuthUserEntity user = authUserRepository.findByUsernameAndEnabledTrue(username)
-			.orElseThrow(() -> unauthorized("LOGIN_FAIL", null, username, "user_not_found", request, traceId, failKey));
+		AuthUserEntity user = authUserRepository.findByUsernameAndEnabledTrue(normalizedUsername)
+			.orElseThrow(() -> unauthorized("LOGIN_FAIL", null, normalizedUsername, "user_not_found", request, traceId, failKey));
 		if (!BCrypt.checkpw(password, user.getPasswordHash())) {
 			throw unauthorized("LOGIN_FAIL", user.getId(), user.getUsername(), "password_invalid", request, traceId, failKey);
 		}
@@ -164,6 +171,7 @@ public class AuthService {
 			audit("PASSWORD_CHANGE_FAIL", userId, user.getUsername(), "FAIL", "current_password_invalid", request, traceId);
 			throw new AuthException(AuthErrorCode.AUTH_PASSWORD_INVALID, HttpStatus.UNAUTHORIZED, "Current password is invalid");
 		}
+		passwordPolicyValidator.validate(newPassword);
 		user.setPasswordHash(BCrypt.hashpw(newPassword, BCrypt.gensalt()));
 		authUserRepository.save(user);
 		int revokedCount = revokeAllSessions(userId, request, traceId);

@@ -12,7 +12,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -27,17 +26,23 @@ public class AdminUserService {
 	private final AuthRoleRepository authRoleRepository;
 	private final AuthUserRoleRepository authUserRoleRepository;
 	private final AuditEventPublisher auditEventPublisher;
+	private final PasswordPolicyValidator passwordPolicyValidator;
+	private final UsernamePolicyValidator usernamePolicyValidator;
 
 	public AdminUserService(
 		AuthUserRepository authUserRepository,
 		AuthRoleRepository authRoleRepository,
 		AuthUserRoleRepository authUserRoleRepository,
-		AuditEventPublisher auditEventPublisher
+		AuditEventPublisher auditEventPublisher,
+		PasswordPolicyValidator passwordPolicyValidator,
+		UsernamePolicyValidator usernamePolicyValidator
 	) {
 		this.authUserRepository = authUserRepository;
 		this.authRoleRepository = authRoleRepository;
 		this.authUserRoleRepository = authUserRoleRepository;
 		this.auditEventPublisher = auditEventPublisher;
+		this.passwordPolicyValidator = passwordPolicyValidator;
+		this.usernamePolicyValidator = usernamePolicyValidator;
 	}
 
 	@Transactional
@@ -49,11 +54,12 @@ public class AdminUserService {
 		HttpServletRequest request,
 		String traceId
 	) {
-		String normalizedUsername = normalizeUsername(username);
+		String normalizedUsername = usernamePolicyValidator.normalizeAndValidate(username);
 		if (authUserRepository.existsByUsername(normalizedUsername)) {
 			throw new AuthException(AuthErrorCode.AUTH_USERNAME_CONFLICT, HttpStatus.CONFLICT, "Username already exists");
 		}
 		List<AuthRoleEntity> roleEntities = resolveRoles(roles);
+		passwordPolicyValidator.validate(password);
 
 		AuthUserEntity user = new AuthUserEntity();
 		user.setUsername(normalizedUsername);
@@ -81,6 +87,7 @@ public class AdminUserService {
 		String traceId
 	) {
 		AuthUserEntity user = getUserOrThrow(userId);
+		passwordPolicyValidator.validate(newPassword);
 		user.setPasswordHash(BCrypt.hashpw(newPassword, BCrypt.gensalt()));
 		authUserRepository.save(user);
 		audit("ADMIN_USER_PASSWORD_RESET_SUCCESS", user.getId(), user.getUsername(), "SUCCESS", "", request, traceId);
@@ -174,10 +181,6 @@ public class AdminUserService {
 
 	private UserView toUserView(AuthUserEntity user, Set<AuthRole> roles) {
 		return new UserView(user.getId(), user.getUsername(), Boolean.TRUE.equals(user.getEnabled()), roles);
-	}
-
-	private String normalizeUsername(String username) {
-		return username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
 	}
 
 	private void audit(

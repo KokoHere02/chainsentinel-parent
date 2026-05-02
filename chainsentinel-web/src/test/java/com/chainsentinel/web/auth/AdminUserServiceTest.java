@@ -44,14 +44,22 @@ class AdminUserServiceTest {
 	private HttpServletRequest request;
 
 	private AdminUserService adminUserService;
+	private PasswordPolicyValidator passwordPolicyValidator;
+	private UsernamePolicyValidator usernamePolicyValidator;
 
 	@BeforeEach
 	void setUp() {
+		AuthProperties authProperties = new AuthProperties();
+		authProperties.setPasswordMinLength(10);
+		passwordPolicyValidator = new PasswordPolicyValidator(authProperties);
+		usernamePolicyValidator = new UsernamePolicyValidator();
 		adminUserService = new AdminUserService(
 			authUserRepository,
 			authRoleRepository,
 			authUserRoleRepository,
-			auditEventPublisher
+			auditEventPublisher,
+			passwordPolicyValidator,
+			usernamePolicyValidator
 		);
 		when(request.getRemoteAddr()).thenReturn("127.0.0.1");
 		when(request.getRequestURI()).thenReturn("/api/admin/users");
@@ -71,7 +79,7 @@ class AdminUserServiceTest {
 
 		AdminUserService.UserView view = adminUserService.createUser(
 			"Alice",
-			"password",
+			"Password1A",
 			Set.of(AuthRole.OPERATOR),
 			true,
 			request,
@@ -107,10 +115,10 @@ class AdminUserServiceTest {
 		user.setPasswordHash(BCrypt.hashpw("old", BCrypt.gensalt()));
 		when(authUserRepository.findById(2L)).thenReturn(Optional.of(user));
 
-		adminUserService.updatePassword(2L, "new-password", request, "t2");
+		adminUserService.updatePassword(2L, "NewPassword1", request, "t2");
 
 		verify(authUserRepository).save(user);
-		assertTrue(BCrypt.checkpw("new-password", user.getPasswordHash()));
+		assertTrue(BCrypt.checkpw("NewPassword1", user.getPasswordHash()));
 	}
 
 	@Test
@@ -144,11 +152,35 @@ class AdminUserServiceTest {
 
 		AuthException ex = assertThrows(
 			AuthException.class,
-			() -> adminUserService.createUser("alice", "password", Set.of(AuthRole.OPERATOR), true, request, "t5")
+			() -> adminUserService.createUser("alice", "Password1A", Set.of(AuthRole.OPERATOR), true, request, "t5")
 		);
 
 		assertEquals(AuthErrorCode.AUTH_USERNAME_CONFLICT, ex.getErrorCode());
 		assertEquals(HttpStatus.CONFLICT, ex.getStatus());
+	}
+
+	@Test
+	void shouldRejectWeakPasswordWhenCreateUser() {
+		when(authUserRepository.existsByUsername("alice")).thenReturn(false);
+		when(authRoleRepository.findByRoleCodeInAndEnabledTrue(Set.of("OPERATOR"))).thenReturn(List.of(buildRole(2L, "OPERATOR")));
+
+		AuthException ex = assertThrows(
+			AuthException.class,
+			() -> adminUserService.createUser("alice", "weak", Set.of(AuthRole.OPERATOR), true, request, "t6")
+		);
+
+		assertEquals(AuthErrorCode.AUTH_PASSWORD_WEAK, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldRejectInvalidUsernameWhenCreateUser() {
+		AuthException ex = assertThrows(
+			AuthException.class,
+			() -> adminUserService.createUser("A*", "Password1A", Set.of(AuthRole.OPERATOR), true, request, "t7")
+		);
+
+		assertEquals(AuthErrorCode.AUTH_USERNAME_INVALID, ex.getErrorCode());
+		assertEquals(HttpStatus.BAD_REQUEST, ex.getStatus());
 	}
 
 	private AuthRoleEntity buildRole(Long id, String roleCode) {

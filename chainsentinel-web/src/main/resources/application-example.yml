@@ -27,6 +27,7 @@ chainsentinel:
     login-fail-max-attempts: 5
     login-fail-window-seconds: 300
     login-lock-seconds: 600
+    password-min-length: 10
   debug:
     rule-test-match-enabled: true
   security:
