@@ -18,6 +18,8 @@ import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCrypt;
 import org.springframework.stereotype.Service;
+import com.chainsentinel.infra.entity.AuthAuditLogEntity;
+import com.chainsentinel.infra.repository.AuthAuditLogRepository;
 
 @Service
 public class AuthService {
@@ -25,6 +27,7 @@ public class AuthService {
 	private final AuthUserRepository authUserRepository;
 	private final AuthUserRoleRepository authUserRoleRepository;
 	private final AuthRefreshTokenRepository authRefreshTokenRepository;
+	private final AuthAuditLogRepository authAuditLogRepository;
 	private final AuditEventPublisher auditEventPublisher;
 	private final JwtTokenService jwtTokenService;
 	private final AuthProperties authProperties;
@@ -34,6 +37,7 @@ public class AuthService {
 		AuthUserRepository authUserRepository,
 		AuthUserRoleRepository authUserRoleRepository,
 		AuthRefreshTokenRepository authRefreshTokenRepository,
+		AuthAuditLogRepository authAuditLogRepository,
 		AuditEventPublisher auditEventPublisher,
 		JwtTokenService jwtTokenService,
 		AuthProperties authProperties
@@ -41,6 +45,7 @@ public class AuthService {
 		this.authUserRepository = authUserRepository;
 		this.authUserRoleRepository = authUserRoleRepository;
 		this.authRefreshTokenRepository = authRefreshTokenRepository;
+		this.authAuditLogRepository = authAuditLogRepository;
 		this.auditEventPublisher = auditEventPublisher;
 		this.jwtTokenService = jwtTokenService;
 		this.authProperties = authProperties;
@@ -138,6 +143,50 @@ public class AuthService {
 		authRefreshTokenRepository.saveAll(tokens);
 		audit("SESSION_REVOKE_ALL_SUCCESS", userId, null, "SUCCESS", "count=" + tokens.size(), request, traceId);
 		return tokens.size();
+	}
+
+	public MeView me(Long userId) {
+		AuthUserEntity user = getUserOrThrow(userId);
+		Set<AuthRole> roles = getRoles(userId);
+		int activeSessionCount = authRefreshTokenRepository.findByUserIdAndRevokedFalseAndExpiresAtAfter(userId, Instant.now()).size();
+		return new MeView(user.getId(), user.getUsername(), Boolean.TRUE.equals(user.getEnabled()), roles, activeSessionCount);
+	}
+
+	public void changePassword(
+		Long userId,
+		String currentPassword,
+		String newPassword,
+		HttpServletRequest request,
+		String traceId
+	) {
+		AuthUserEntity user = getUserOrThrow(userId);
+		if (!BCrypt.checkpw(currentPassword, user.getPasswordHash())) {
+			audit("PASSWORD_CHANGE_FAIL", userId, user.getUsername(), "FAIL", "current_password_invalid", request, traceId);
+			throw new AuthException(AuthErrorCode.AUTH_PASSWORD_INVALID, HttpStatus.UNAUTHORIZED, "Current password is invalid");
+		}
+		user.setPasswordHash(BCrypt.hashpw(newPassword, BCrypt.gensalt()));
+		authUserRepository.save(user);
+		int revokedCount = revokeAllSessions(userId, request, traceId);
+		audit("PASSWORD_CHANGE_SUCCESS", userId, user.getUsername(), "SUCCESS", "revoked_sessions=" + revokedCount, request, traceId);
+	}
+
+	public List<AuditLogView> listMyAuditLogs(Long userId, int limit) {
+		List<AuthAuditLogEntity> logs = limit <= 50
+			? authAuditLogRepository.findTop50ByUserIdOrderByIdDesc(userId)
+			: authAuditLogRepository.findTop200ByUserIdOrderByIdDesc(userId);
+		return logs.stream()
+			.limit(limit)
+			.map(log -> new AuditLogView(
+				log.getAction(),
+				log.getResult(),
+				log.getReason(),
+				log.getTraceId(),
+				log.getRequestIp(),
+				log.getRequestPath(),
+				log.getRequestMethod(),
+				log.getCreatedAt()
+			))
+			.toList();
 	}
 
 	private AuthException unauthorized(
@@ -260,6 +309,17 @@ public class AuthService {
 		return tokenId.substring(0, 6) + "****" + tokenId.substring(tokenId.length() - 4);
 	}
 
+	private AuthUserEntity getUserOrThrow(Long userId) {
+		return authUserRepository.findById(userId)
+			.orElseThrow(() -> new AuthException(AuthErrorCode.AUTH_USER_NOT_FOUND, HttpStatus.NOT_FOUND, "User not found"));
+	}
+
+	private Set<AuthRole> getRoles(Long userId) {
+		return authUserRoleRepository.findRoleCodesByUserId(userId).stream()
+			.map(AuthRole::valueOf)
+			.collect(Collectors.toSet());
+	}
+
 	private record LoginFailState(int failCount, long windowStartEpochSecond, long lockedUntilEpochSecond) {
 	}
 
@@ -280,6 +340,27 @@ public class AuthService {
 		String issuedUa,
 		Instant createdAt,
 		Instant expiresAt
+	) {
+	}
+
+	public record MeView(
+		Long userId,
+		String username,
+		boolean enabled,
+		Set<AuthRole> roles,
+		int activeSessionCount
+	) {
+	}
+
+	public record AuditLogView(
+		String action,
+		String result,
+		String reason,
+		String traceId,
+		String requestIp,
+		String requestPath,
+		String requestMethod,
+		Instant createdAt
 	) {
 	}
 }

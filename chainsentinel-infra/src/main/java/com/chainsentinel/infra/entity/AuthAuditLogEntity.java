@@ -132,4 +132,8 @@ public class AuthAuditLogEntity {
 	public void setRequestMethod(String requestMethod) {
 		this.requestMethod = requestMethod;
 	}
+
+	public Instant getCreatedAt() {
+		return createdAt;
+	}
 }
