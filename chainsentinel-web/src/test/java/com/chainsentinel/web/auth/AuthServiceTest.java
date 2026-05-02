@@ -6,12 +6,15 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.chainsentinel.infra.entity.AuthAuditLogEntity;
 import com.chainsentinel.infra.entity.AuthRefreshTokenEntity;
 import com.chainsentinel.infra.entity.AuthUserEntity;
+import com.chainsentinel.infra.repository.AuthAuditLogRepository;
 import com.chainsentinel.infra.repository.AuthRefreshTokenRepository;
 import com.chainsentinel.infra.repository.AuthUserRepository;
 import com.chainsentinel.infra.repository.AuthUserRoleRepository;
@@ -40,6 +43,8 @@ class AuthServiceTest {
 	@Mock
 	private AuthRefreshTokenRepository authRefreshTokenRepository;
 	@Mock
+	private AuthAuditLogRepository authAuditLogRepository;
+	@Mock
 	private HttpServletRequest request;
 	@Mock
 	private AuditEventPublisher auditEventPublisher;
@@ -60,6 +65,7 @@ class AuthServiceTest {
 			authUserRepository,
 			authUserRoleRepository,
 			authRefreshTokenRepository,
+			authAuditLogRepository,
 			auditEventPublisher,
 			jwtTokenService,
 			properties
@@ -199,6 +205,73 @@ class AuthServiceTest {
 		assertTrue(Boolean.TRUE.equals(t1.getRevoked()));
 		assertTrue(Boolean.TRUE.equals(t2.getRevoked()));
 		verify(authRefreshTokenRepository).saveAll(List.of(t1, t2));
+	}
+
+	@Test
+	void shouldReturnMeView() {
+		AuthUserEntity user = buildUser(1L, "admin", "password");
+		when(authUserRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(authUserRoleRepository.findRoleCodesByUserId(1L)).thenReturn(List.of("ADMIN", "TRADER"));
+		when(authRefreshTokenRepository.findByUserIdAndRevokedFalseAndExpiresAtAfter(eq(1L), any())).thenReturn(List.of(
+			new AuthRefreshTokenEntity(),
+			new AuthRefreshTokenEntity()
+		));
+
+		AuthService.MeView view = authService.me(1L);
+
+		assertEquals(1L, view.userId());
+		assertEquals("admin", view.username());
+		assertEquals(2, view.activeSessionCount());
+	}
+
+	@Test
+	void shouldChangePasswordAndRevokeSessions() {
+		AuthUserEntity user = buildUser(1L, "admin", "old-password");
+		AuthRefreshTokenEntity token = new AuthRefreshTokenEntity();
+		token.setUserId(1L);
+		token.setTokenId("r1");
+		token.setRevoked(false);
+		token.setExpiresAt(Instant.now().plusSeconds(600));
+		when(authUserRepository.findById(1L)).thenReturn(Optional.of(user));
+		when(authRefreshTokenRepository.findByUserIdAndRevokedFalseAndExpiresAtAfter(eq(1L), any())).thenReturn(List.of(token));
+
+		authService.changePassword(1L, "old-password", "new-password", request, "t8");
+
+		assertTrue(BCrypt.checkpw("new-password", user.getPasswordHash()));
+		assertTrue(Boolean.TRUE.equals(token.getRevoked()));
+		verify(authUserRepository).save(user);
+		verify(authRefreshTokenRepository).saveAll(List.of(token));
+	}
+
+	@Test
+	void shouldRejectInvalidCurrentPassword() {
+		AuthUserEntity user = buildUser(1L, "admin", "old-password");
+		when(authUserRepository.findById(1L)).thenReturn(Optional.of(user));
+
+		AuthException ex = assertThrows(
+			AuthException.class,
+			() -> authService.changePassword(1L, "bad-password", "new-password", request, "t9")
+		);
+
+		assertEquals(AuthErrorCode.AUTH_PASSWORD_INVALID, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldListMyAuditLogs() {
+		AuthAuditLogEntity log = new AuthAuditLogEntity();
+		log.setAction("LOGIN_SUCCESS");
+		log.setResult("SUCCESS");
+		log.setReason("");
+		log.setTraceId("t10");
+		log.setRequestIp("127.0.0.1");
+		log.setRequestPath("/api/auth/login");
+		log.setRequestMethod("POST");
+		when(authAuditLogRepository.findTop50ByUserIdOrderByIdDesc(1L)).thenReturn(List.of(log));
+
+		List<AuthService.AuditLogView> logs = authService.listMyAuditLogs(1L, 50);
+
+		assertEquals(1, logs.size());
+		assertEquals("LOGIN_SUCCESS", logs.get(0).action());
 	}
 
 	private AuthUserEntity buildUser(Long id, String username, String rawPassword) {
