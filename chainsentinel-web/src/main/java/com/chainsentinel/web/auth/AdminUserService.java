@@ -6,12 +6,14 @@ import com.chainsentinel.infra.entity.AuthUserRoleEntity;
 import com.chainsentinel.infra.repository.AuthRoleRepository;
 import com.chainsentinel.infra.repository.AuthUserRepository;
 import com.chainsentinel.infra.repository.AuthUserRoleRepository;
+import com.chainsentinel.infra.support.ManagementQueryPageSupport;
 import com.chainsentinel.web.auth.audit.AuditEvent;
 import com.chainsentinel.web.auth.audit.AuditEventPublisher;
 import jakarta.servlet.http.HttpServletRequest;
-import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -21,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class AdminUserService {
+
+	private static final int DEFAULT_PAGE_SIZE = 100;
 
 	private final AuthUserRepository authUserRepository;
 	private final AuthRoleRepository authRoleRepository;
@@ -73,10 +77,39 @@ public class AdminUserService {
 
 	@Transactional(readOnly = true)
 	public List<UserView> listUsers() {
-		return authUserRepository.findAll().stream()
-			.sorted(Comparator.comparing(AuthUserEntity::getId))
-			.map(user -> toUserView(user, getUserRoles(user.getId())))
-			.toList();
+		return listUsers(0, DEFAULT_PAGE_SIZE);
+	}
+
+	@Transactional(readOnly = true)
+	public List<UserView> listUsers(int page, int size) {
+		List<AuthUserEntity> pageUsers = authUserRepository.findAll(
+			ManagementQueryPageSupport.pageByIdDesc(page, size)
+		).getContent();
+		if (pageUsers.isEmpty()) {
+			return List.of();
+		}
+		List<Long> userIds = pageUsers.stream().map(AuthUserEntity::getId).toList();
+		LinkedHashMap<Long, UserViewBuilder> usersById = new LinkedHashMap<>();
+		for (AuthUserEntity user : pageUsers) {
+			usersById.put(user.getId(), new UserViewBuilder(user.getId(), user.getUsername(), Boolean.TRUE.equals(user.getEnabled())));
+		}
+		for (AuthUserRepository.UserWithRoleRow row : authUserRepository.findUserRoleRowsByUserIds(userIds)) {
+			if (row == null || row.getUserId() == null) {
+				continue;
+			}
+			UserViewBuilder builder = usersById.get(row.getUserId());
+			if (builder == null) {
+				continue;
+			}
+			if (row.getRoleCode() != null && !row.getRoleCode().isBlank()) {
+				builder.roles.add(AuthRole.valueOf(row.getRoleCode()));
+			}
+		}
+		List<UserView> result = new ArrayList<>(usersById.size());
+		for (UserViewBuilder builder : usersById.values()) {
+			result.add(new UserView(builder.id, builder.username, builder.enabled, builder.roles));
+		}
+		return result;
 	}
 
 	@Transactional
@@ -206,5 +239,18 @@ public class AdminUserService {
 	}
 
 	public record UserView(Long id, String username, boolean enabled, Set<AuthRole> roles) {
+	}
+
+	private static final class UserViewBuilder {
+		private final Long id;
+		private final String username;
+		private final boolean enabled;
+		private final Set<AuthRole> roles = new LinkedHashSet<>();
+
+		private UserViewBuilder(Long id, String username, boolean enabled) {
+			this.id = id;
+			this.username = username;
+			this.enabled = enabled;
+		}
 	}
 }

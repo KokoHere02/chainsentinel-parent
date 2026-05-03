@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -26,6 +27,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCrypt;
 
@@ -61,9 +65,9 @@ class AdminUserServiceTest {
 			passwordPolicyValidator,
 			usernamePolicyValidator
 		);
-		when(request.getRemoteAddr()).thenReturn("127.0.0.1");
-		when(request.getRequestURI()).thenReturn("/api/admin/users");
-		when(request.getMethod()).thenReturn("POST");
+		lenient().when(request.getRemoteAddr()).thenReturn("127.0.0.1");
+		lenient().when(request.getRequestURI()).thenReturn("/api/admin/users");
+		lenient().when(request.getMethod()).thenReturn("POST");
 	}
 
 	@Test
@@ -96,17 +100,32 @@ class AdminUserServiceTest {
 
 	@Test
 	void shouldListUsers() {
-		AuthUserEntity admin = buildUser(1L, "admin", true);
-		AuthUserEntity alice = buildUser(2L, "alice", false);
-		when(authUserRepository.findAll()).thenReturn(List.of(alice, admin));
-		when(authUserRoleRepository.findRoleCodesByUserId(1L)).thenReturn(List.of("ADMIN"));
-		when(authUserRoleRepository.findRoleCodesByUserId(2L)).thenReturn(List.of("TRADER"));
+		when(authUserRepository.findAll(PageRequest.of(0, 100, Sort.by(Sort.Direction.DESC, "id"))))
+			.thenReturn(new PageImpl<>(List.of(
+				buildUser(2L, "alice", false),
+				buildUser(1L, "admin", true)
+			)));
+		when(authUserRepository.findUserRoleRowsByUserIds(List.of(2L, 1L))).thenReturn(List.of(
+			buildUserRow(2L, "alice", false, "TRADER"),
+			buildUserRow(1L, "admin", true, "ADMIN")
+		));
 
 		List<AdminUserService.UserView> users = adminUserService.listUsers();
 
 		assertEquals(2, users.size());
-		assertEquals("admin", users.get(0).username());
-		assertFalse(users.get(1).enabled());
+		assertEquals("alice", users.get(0).username());
+		assertFalse(users.get(0).enabled());
+	}
+
+	@Test
+	void shouldClampUserListPageBounds() {
+		when(authUserRepository.findAll(PageRequest.of(0, 100, Sort.by(Sort.Direction.DESC, "id"))))
+			.thenReturn(new PageImpl<>(List.of()));
+
+		List<AdminUserService.UserView> users = adminUserService.listUsers(-1, 999);
+
+		assertTrue(users.isEmpty());
+		verify(authUserRepository).findAll(PageRequest.of(0, 100, Sort.by(Sort.Direction.DESC, "id")));
 	}
 
 	@Test
@@ -204,6 +223,30 @@ class AdminUserServiceTest {
 		user.setUsername(username);
 		user.setEnabled(enabled);
 		return user;
+	}
+
+	private AuthUserRepository.UserWithRoleRow buildUserRow(Long id, String username, boolean enabled, String roleCode) {
+		return new AuthUserRepository.UserWithRoleRow() {
+			@Override
+			public Long getUserId() {
+				return id;
+			}
+
+			@Override
+			public String getUsername() {
+				return username;
+			}
+
+			@Override
+			public Boolean getEnabled() {
+				return enabled;
+			}
+
+			@Override
+			public String getRoleCode() {
+				return roleCode;
+			}
+		};
 	}
 
 	private void setUserId(AuthUserEntity user, Long id) {

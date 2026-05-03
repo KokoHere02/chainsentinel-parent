@@ -35,6 +35,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
@@ -317,7 +318,13 @@ class DefaultAlertRuleServiceTest {
     priceRule.setSeverity("HIGH");
     priceRule.setEnabled(true);
 
-    when(alertRuleRepository.findAll()).thenReturn(List.of(addressRule, priceRule));
+    when(alertRuleRepository.listByFilters(
+      AlertRuleType.PRICE_THRESHOLD,
+      null,
+      null,
+      PageRequest.of(0, 100, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"))
+    ))
+      .thenReturn(List.of(priceRule));
 
     List<AlertRuleView> results = service.list(new AlertRuleQueryCommand(AlertRuleType.PRICE_THRESHOLD, null, null));
 
@@ -346,13 +353,63 @@ class DefaultAlertRuleServiceTest {
     disabledRule.setSeverity("HIGH");
     disabledRule.setEnabled(false);
 
-    when(alertRuleRepository.findAll()).thenReturn(List.of(enabledRule, disabledRule));
+    when(alertRuleRepository.listByFilters(
+      null,
+      false,
+      null,
+      PageRequest.of(0, 100, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"))
+    ))
+      .thenReturn(List.of(disabledRule));
 
     List<AlertRuleView> results = service.list(new AlertRuleQueryCommand(null, false, null));
 
     assertEquals(1, results.size());
     assertEquals(42L, results.get(0).id());
     assertEquals(false, results.get(0).enabled());
+  }
+
+  @Test
+  void shouldClampRuleListPageSizeToUpperBound() {
+    DefaultAlertRuleService service = buildService();
+
+    when(alertRuleRepository.listByFilters(
+      null,
+      null,
+      null,
+      PageRequest.of(2, 100, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"))
+    ))
+      .thenReturn(List.of());
+
+    service.list(new AlertRuleQueryCommand(null, null, null), 2, 999);
+
+    verify(alertRuleRepository).listByFilters(
+      null,
+      null,
+      null,
+      PageRequest.of(2, 100, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"))
+    );
+  }
+
+  @Test
+  void shouldClampRuleListNegativePageToZero() {
+    DefaultAlertRuleService service = buildService();
+
+    when(alertRuleRepository.listByFilters(
+      null,
+      null,
+      null,
+      PageRequest.of(0, 1, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"))
+    ))
+      .thenReturn(List.of());
+
+    service.list(new AlertRuleQueryCommand(null, null, null), -5, 0);
+
+    verify(alertRuleRepository).listByFilters(
+      null,
+      null,
+      null,
+      PageRequest.of(0, 1, org.springframework.data.domain.Sort.by(org.springframework.data.domain.Sort.Direction.DESC, "id"))
+    );
   }
 
   @Test

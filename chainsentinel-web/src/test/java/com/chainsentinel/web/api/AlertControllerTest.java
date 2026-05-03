@@ -86,4 +86,19 @@ class AlertControllerTest {
 
 		verify(alertDispatchService).retryOne(9L);
 	}
+
+	@Test
+	void shouldClampAlertPageSizeToUpperBound() throws Exception {
+		when(alertQueryService.query(any(AlertQuery.class), any(PageRequest.class)))
+			.thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 100), 0));
+
+		mockMvc.perform(get("/api/alerts")
+				.param("page", "-1")
+				.param("size", "999"))
+			.andExpect(status().isOk());
+
+		ArgumentCaptor<org.springframework.data.domain.Pageable> p = ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+		verify(alertQueryService).query(any(AlertQuery.class), p.capture());
+		Assertions.assertEquals(PageRequest.of(0, 100, Sort.by(Sort.Direction.DESC, "id")), p.getValue());
+	}
 }

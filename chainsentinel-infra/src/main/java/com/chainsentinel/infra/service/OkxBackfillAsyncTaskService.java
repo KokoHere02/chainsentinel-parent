@@ -1,7 +1,8 @@
 package com.chainsentinel.infra.service;
 
-import java.time.Instant;
+import com.chainsentinel.infra.support.ManagementQueryPageSupport;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -70,15 +71,19 @@ public class OkxBackfillAsyncTaskService {
 	}
 
 	public List<TaskStatus> list(int page, int size, String status, String instId) {
-		int safePage = Math.max(0, page);
-		int safeSize = Math.max(1, Math.min(500, size));
+		int safePage = ManagementQueryPageSupport.normalizePage(page);
+		int safeSize = ManagementQueryPageSupport.normalizePageSize(size);
 		String normalizedStatus = normalizeStatus(status);
 		String normalizedInstId = normalizeInstId(instId);
 
 		List<TaskState> matched = tasks.values().stream()
 			.filter(state -> normalizedStatus == null || normalizedStatus.equals(state.status()))
 			.filter(state -> normalizedInstId == null || normalizedInstId.equals(state.instId()))
-			.sorted(Comparator.comparing(TaskState::submittedAt).reversed())
+			.sorted(
+				Comparator.comparing(TaskState::submittedAt)
+					.thenComparing(TaskState::taskId)
+					.reversed()
+			)
 			.toList();
 		int fromIndex = Math.min(matched.size(), safePage * safeSize);
 		int toIndex = Math.min(matched.size(), fromIndex + safeSize);
@@ -369,6 +374,10 @@ public class OkxBackfillAsyncTaskService {
 
 		private String instId() {
 			return instId;
+		}
+
+		private String taskId() {
+			return taskId;
 		}
 
 		private Long durationMs() {

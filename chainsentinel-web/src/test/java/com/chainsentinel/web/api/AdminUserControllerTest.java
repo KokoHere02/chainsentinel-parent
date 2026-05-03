@@ -63,7 +63,7 @@ class AdminUserControllerTest {
 
 	@Test
 	void shouldListUsers() throws Exception {
-		when(adminUserService.listUsers()).thenReturn(List.of(
+		when(adminUserService.listUsers(0, 100)).thenReturn(List.of(
 			new AdminUserService.UserView(1L, "admin", true, Set.of(AuthRole.ADMIN)),
 			new AdminUserService.UserView(2L, "alice", false, Set.of(AuthRole.TRADER))
 		));
@@ -73,6 +73,18 @@ class AdminUserControllerTest {
 			.andExpect(jsonPath("$", hasSize(2)))
 			.andExpect(jsonPath("$[1].username", is("alice")))
 			.andExpect(jsonPath("$[1].enabled", is(false)));
+	}
+
+	@Test
+	void shouldPassRawUserPageArgumentsToService() throws Exception {
+		when(adminUserService.listUsers(-3, 999)).thenReturn(List.of());
+
+		mockMvc.perform(get("/api/admin/users")
+				.param("page", "-3")
+				.param("size", "999"))
+			.andExpect(status().isOk());
+
+		verify(adminUserService).listUsers(-3, 999);
 	}
 
 	@Test

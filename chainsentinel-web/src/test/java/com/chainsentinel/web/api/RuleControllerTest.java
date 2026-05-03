@@ -178,7 +178,7 @@ class RuleControllerTest {
 
   @Test
   void shouldListRulesWithTypeAndEnabledFilters() throws Exception {
-    when(alertRuleService.list(any(AlertRuleQueryCommand.class)))
+    when(alertRuleService.list(any(AlertRuleQueryCommand.class), any(Integer.class), any(Integer.class)))
       .thenReturn(List.of(new AlertRuleView(5L, "price-1", AlertRuleType.PRICE_THRESHOLD, "{}", "HIGH", true)));
 
     mockMvc.perform(get("/api/rules")
@@ -190,10 +190,23 @@ class RuleControllerTest {
       .andExpect(jsonPath("$[0].enabled", is(true)));
 
     ArgumentCaptor<AlertRuleQueryCommand> captor = ArgumentCaptor.forClass(AlertRuleQueryCommand.class);
-    verify(alertRuleService).list(captor.capture());
+    verify(alertRuleService).list(captor.capture(), org.mockito.ArgumentMatchers.eq(0), org.mockito.ArgumentMatchers.eq(100));
     AlertRuleQueryCommand cmd = captor.getValue();
     Assertions.assertEquals(AlertRuleType.PRICE_THRESHOLD, cmd.type());
     Assertions.assertEquals(true, cmd.enabled());
+  }
+
+  @Test
+  void shouldPassRawRulePageArgumentsToService() throws Exception {
+    when(alertRuleService.list(any(AlertRuleQueryCommand.class), any(Integer.class), any(Integer.class)))
+      .thenReturn(List.of());
+
+    mockMvc.perform(get("/api/rules")
+        .param("page", "-2")
+        .param("size", "999"))
+      .andExpect(status().isOk());
+
+    verify(alertRuleService).list(any(AlertRuleQueryCommand.class), org.mockito.ArgumentMatchers.eq(-2), org.mockito.ArgumentMatchers.eq(999));
   }
 
   @Test
@@ -310,7 +323,7 @@ class RuleControllerTest {
   void shouldPassTemplateCreateListAndGetFlow() throws Exception {
     AlertRuleView created = new AlertRuleView(41L, "Price Breakout", AlertRuleType.PRICE_THRESHOLD, "{}", "HIGH", true);
     when(alertRuleService.create(any(AlertRuleCreateCommand.class))).thenReturn(created);
-    when(alertRuleService.list(any(AlertRuleQueryCommand.class))).thenReturn(List.of(created));
+    when(alertRuleService.list(any(AlertRuleQueryCommand.class), any(Integer.class), any(Integer.class))).thenReturn(List.of(created));
     when(alertRuleService.getById(41L)).thenReturn(created);
 
     mockMvc.perform(post("/api/rule-templates/from-template")

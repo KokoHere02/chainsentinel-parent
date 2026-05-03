@@ -4,14 +4,13 @@ import com.chainsentinel.core.service.AlertDispatchService;
 import com.chainsentinel.core.service.AlertQueryService;
 import com.chainsentinel.core.service.dto.AlertQuery;
 import com.chainsentinel.core.service.dto.AlertView;
+import com.chainsentinel.infra.support.ManagementQueryPageSupport;
 import com.chainsentinel.web.api.support.ratelimit.RateLimit;
 import java.time.Instant;
 import java.util.Map;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -44,7 +43,7 @@ public class AlertController {
 		@RequestParam(name = "page", defaultValue = "0") int page,
 		@RequestParam(name = "size", defaultValue = "20") int size
 	) {
-		Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
+		Pageable pageable = ManagementQueryPageSupport.pageByIdDesc(page, size);
 		return alertQueryService.query(new AlertQuery(sendStatus, severity, ruleId, sentAtFrom, sentAtTo), pageable);
 	}
 

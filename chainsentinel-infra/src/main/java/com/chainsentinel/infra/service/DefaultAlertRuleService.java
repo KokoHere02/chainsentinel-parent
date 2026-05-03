@@ -17,6 +17,7 @@ import com.chainsentinel.core.service.dto.AlertRuleView;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.rule.RuleConditionJsonParser;
+import com.chainsentinel.infra.support.ManagementQueryPageSupport;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +30,7 @@ import org.springframework.util.StringUtils;
 public class DefaultAlertRuleService implements AlertRuleService {
 
 	private static final Logger log = LoggerFactory.getLogger(DefaultAlertRuleService.class);
+	private static final int DEFAULT_PAGE_SIZE = 100;
 	private static final Set<String> FORBIDDEN_EVENT_FIELDS = Set.of("from_address", "to_address");
 	private static final Set<AlertRuleType> ENABLED_RULE_TYPES = EnumSet.of(
 		AlertRuleType.EVENT,
@@ -118,25 +120,24 @@ public class DefaultAlertRuleService implements AlertRuleService {
 	@Override
 	@Transactional(readOnly = true)
 	public List<AlertRuleView> list(AlertRuleQueryCommand command) {
+		return list(command, 0, DEFAULT_PAGE_SIZE);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<AlertRuleView> list(AlertRuleQueryCommand command, int page, int size) {
 		String keyword = command == null ? null : command.keyword();
 		AlertRuleType type = command == null ? null : command.type();
 		Boolean enabled = command == null ? null : command.enabled();
 		String normalizedKeyword = StringUtils.hasText(keyword) ? keyword.trim().toLowerCase() : null;
 
-		return alertRuleRepository.findAll().stream()
-			.filter(rule -> type == null || type == rule.getType())
-			.filter(rule -> enabled == null || enabled.equals(rule.getEnabled()))
-			.filter(rule -> {
-				if (normalizedKeyword == null) {
-					return true;
-				}
-				return StringUtils.hasText(rule.getName()) && rule.getName().toLowerCase().contains(normalizedKeyword);
-			})
-			.sorted((a, b) -> {
-				Long aId = a.getId() == null ? Long.MIN_VALUE : a.getId();
-				Long bId = b.getId() == null ? Long.MIN_VALUE : b.getId();
-				return bId.compareTo(aId);
-			})
+		return alertRuleRepository.listByFilters(
+				type,
+				enabled,
+				normalizedKeyword,
+				ManagementQueryPageSupport.pageByIdDesc(page, size)
+			)
+			.stream()
 			.map(rule -> new AlertRuleView(
 				rule.getId(),
 				rule.getName(),
