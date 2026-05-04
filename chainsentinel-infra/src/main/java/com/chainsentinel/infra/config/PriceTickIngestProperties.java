@@ -9,6 +9,8 @@ public class PriceTickIngestProperties {
 	private int batchSize = 200;
 	private int queueCapacity = 20000;
 	private long flushIntervalMs = 1000L;
+	private int highWatermark = 0;
+	private double minPersistChangeRatio = 0.0D;
 
 	public boolean isEnabled() {
 		return enabled;
@@ -41,5 +43,20 @@ public class PriceTickIngestProperties {
 	public void setFlushIntervalMs(long flushIntervalMs) {
 		this.flushIntervalMs = flushIntervalMs;
 	}
-}
 
+	public int getHighWatermark() {
+		return highWatermark;
+	}
+
+	public void setHighWatermark(int highWatermark) {
+		this.highWatermark = highWatermark;
+	}
+
+	public double getMinPersistChangeRatio() {
+		return minPersistChangeRatio;
+	}
+
+	public void setMinPersistChangeRatio(double minPersistChangeRatio) {
+		this.minPersistChangeRatio = minPersistChangeRatio;
+	}
+}

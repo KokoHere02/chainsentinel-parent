@@ -52,8 +52,6 @@ group by ae.sendStatus, ae.lastError
 
 	long countByCreatedAtAfterAndSeverityIn(Instant since, List<String> severities);
 
-	List<AlertEventEntity> findByCreatedAtBetweenOrderByCreatedAtAsc(Instant fromAt, Instant toAt);
-
 	@Query("""
 		select a.severity as severity, count(a) as total
 		from AlertEventEntity a
@@ -78,6 +76,21 @@ group by ae.sendStatus, ae.lastError
 		Pageable pageable
 	);
 
+	@Query(value = """
+		select floor(unix_timestamp(a.created_at) / :bucketSec) * :bucketSec * 1000 as bucketStartTs,
+		       count(*) as total
+		from alert_event a
+		where a.created_at >= :fromAt
+		  and a.created_at <= :toAt
+		group by floor(unix_timestamp(a.created_at) / :bucketSec)
+		order by bucketStartTs asc
+		""", nativeQuery = true)
+	List<AlertTrendBucketRow> countTrendByBucketBetween(
+		@Param("fromAt") Instant fromAt,
+		@Param("toAt") Instant toAt,
+		@Param("bucketSec") long bucketSec
+	);
+
 	List<AlertEventEntity> findAllByOrderByIdDesc(Pageable pageable);
 
 	interface AlertSeverityRow {
@@ -88,6 +101,12 @@ group by ae.sendStatus, ae.lastError
 
 	interface AlertRuleCountRow {
 		Long getRuleId();
+
+		Long getTotal();
+	}
+
+	interface AlertTrendBucketRow {
+		Long getBucketStartTs();
 
 		Long getTotal();
 	}

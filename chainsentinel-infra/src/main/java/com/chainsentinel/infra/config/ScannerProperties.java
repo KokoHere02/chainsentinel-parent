@@ -6,6 +6,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class ScannerProperties {
 
 	private boolean enabled = true;
+	private long scanIntervalMs = 10000L;
+	private long initialDelayMs = 3000L;
+	private boolean startupRunOnReady = true;
 	private int windowSize = 200;
 	private long initialStartBlock = 0;
 	private long reorgLookbackBlocks = 24;
@@ -18,6 +21,30 @@ public class ScannerProperties {
 
 	public void setEnabled(boolean enabled) {
 		this.enabled = enabled;
+	}
+
+	public long getScanIntervalMs() {
+		return scanIntervalMs;
+	}
+
+	public void setScanIntervalMs(long scanIntervalMs) {
+		this.scanIntervalMs = scanIntervalMs;
+	}
+
+	public long getInitialDelayMs() {
+		return initialDelayMs;
+	}
+
+	public void setInitialDelayMs(long initialDelayMs) {
+		this.initialDelayMs = initialDelayMs;
+	}
+
+	public boolean isStartupRunOnReady() {
+		return startupRunOnReady;
+	}
+
+	public void setStartupRunOnReady(boolean startupRunOnReady) {
+		this.startupRunOnReady = startupRunOnReady;
 	}
 
 	public int getWindowSize() {

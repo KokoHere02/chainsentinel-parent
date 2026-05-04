@@ -43,4 +43,14 @@ public interface PricePullTargetRepository extends JpaRepository<PricePullTarget
 		where t.enabled = true
 		""")
 	long countDistinctInstIdByEnabledTrue();
+
+	@Query("""
+		select distinct t.instId
+		from PricePullTargetEntity t
+		where t.enabled = true
+		  and t.instId is not null
+		  and trim(t.instId) <> ''
+		order by t.priority asc, t.id asc
+		""")
+	List<String> findDistinctEnabledInstIds(Pageable pageable);
 }

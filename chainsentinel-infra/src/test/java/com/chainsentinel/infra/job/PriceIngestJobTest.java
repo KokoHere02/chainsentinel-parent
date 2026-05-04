@@ -190,4 +190,25 @@ class PriceIngestJobTest {
 
     verify(pricePullTargetRepository, never()).findByEnabledTrueOrderByPriorityAscIdAsc();
   }
+
+  @Test
+  void shouldSkipStartupRunWhenDisabledByConfig() {
+    PriceIngestProperties properties = new PriceIngestProperties();
+    properties.setEnabled(true);
+    properties.setStartupRunOnReady(false);
+
+    PriceIngestJob job = new PriceIngestJob(
+      priceService,
+      priceSnapshotService,
+      pricePullTargetRepository,
+      priceProviderConfigRepository,
+      assetPriceSnapshotRepository,
+      properties,
+      new SimpleMeterRegistry()
+    );
+
+    job.runOnStartup();
+
+    verify(pricePullTargetRepository, never()).findByEnabledTrueOrderByPriorityAscIdAsc();
+  }
 }

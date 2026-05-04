@@ -81,12 +81,12 @@ class PriceRuleEvaluatorServiceTest {
 		AssetPriceSnapshotEntity snapshot = new AssetPriceSnapshotEntity();
 		snapshot.setInstId("BTC-USDT");
 		snapshot.setPrice(new BigDecimal("110"));
-		when(assetPriceSnapshotRepository.findTopByInstIdOrderByBucketTsDesc("BTC-USDT"))
-			.thenReturn(Optional.of(snapshot));
+		when(assetPriceSnapshotRepository.findLatestByInstIdIn(List.of("BTC-USDT")))
+			.thenReturn(List.of(snapshot));
 
 		AtomicReference<RuleTriggerStateEntity> stateRef = new AtomicReference<>();
-		when(ruleTriggerStateRepository.findByRuleIdAndTargetKey(1L, "BTC-USDT"))
-			.thenAnswer(invocation -> Optional.ofNullable(stateRef.get()));
+		when(ruleTriggerStateRepository.findByRuleIdInAndTargetKeyIn(List.of(1L), List.of("BTC-USDT")))
+			.thenAnswer(invocation -> stateRef.get() == null ? List.of() : List.of(stateRef.get()));
 		when(ruleTriggerStateRepository.save(any(RuleTriggerStateEntity.class)))
 			.thenAnswer(invocation -> {
 				RuleTriggerStateEntity state = invocation.getArgument(0);
@@ -132,12 +132,12 @@ class PriceRuleEvaluatorServiceTest {
 		AssetPriceSnapshotEntity snapshot = new AssetPriceSnapshotEntity();
 		snapshot.setInstId("ETH-USDT");
 		snapshot.setPrice(new BigDecimal("110"));
-		when(assetPriceSnapshotRepository.findTopByInstIdOrderByBucketTsDesc("ETH-USDT"))
-			.thenReturn(Optional.of(snapshot));
+		when(assetPriceSnapshotRepository.findLatestByInstIdIn(List.of("ETH-USDT")))
+			.thenReturn(List.of(snapshot));
 
 		AtomicReference<RuleTriggerStateEntity> stateRef = new AtomicReference<>();
-		when(ruleTriggerStateRepository.findByRuleIdAndTargetKey(2L, "ETH-USDT"))
-			.thenAnswer(invocation -> Optional.ofNullable(stateRef.get()));
+		when(ruleTriggerStateRepository.findByRuleIdInAndTargetKeyIn(List.of(2L), List.of("ETH-USDT")))
+			.thenAnswer(invocation -> stateRef.get() == null ? List.of() : List.of(stateRef.get()));
 		when(ruleTriggerStateRepository.save(any(RuleTriggerStateEntity.class)))
 			.thenAnswer(invocation -> {
 				RuleTriggerStateEntity state = invocation.getArgument(0);
@@ -176,8 +176,8 @@ class PriceRuleEvaluatorServiceTest {
 		AssetPriceSnapshotEntity snapshot = new AssetPriceSnapshotEntity();
 		snapshot.setInstId("SOL-USDT");
 		snapshot.setPrice(new BigDecimal("120"));
-		when(assetPriceSnapshotRepository.findTopByInstIdOrderByBucketTsDesc("SOL-USDT"))
-			.thenReturn(Optional.of(snapshot));
+		when(assetPriceSnapshotRepository.findLatestByInstIdIn(List.of("SOL-USDT")))
+			.thenReturn(List.of(snapshot));
 
 		RuleTriggerStateEntity existing = new RuleTriggerStateEntity();
 		ReflectionTestUtils.setField(existing, "id", 30L);
@@ -187,8 +187,8 @@ class PriceRuleEvaluatorServiceTest {
 		existing.setLastTriggeredAt(Instant.now().minusSeconds(120));
 		existing.setLastValue(new BigDecimal("90"));
 
-		when(ruleTriggerStateRepository.findByRuleIdAndTargetKey(3L, "SOL-USDT"))
-			.thenReturn(Optional.of(existing));
+		when(ruleTriggerStateRepository.findByRuleIdInAndTargetKeyIn(List.of(3L), List.of("SOL-USDT")))
+			.thenReturn(List.of(existing));
 		when(ruleTriggerStateRepository.save(any(RuleTriggerStateEntity.class)))
 			.thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -210,12 +210,12 @@ class PriceRuleEvaluatorServiceTest {
 		AssetPriceSnapshotEntity snapshot = new AssetPriceSnapshotEntity();
 		snapshot.setInstId("BTC-USDT");
 		snapshot.setPrice(new BigDecimal("120"));
-		when(assetPriceSnapshotRepository.findTopByInstIdOrderByBucketTsDesc("BTC-USDT"))
-			.thenReturn(Optional.of(snapshot));
+		when(assetPriceSnapshotRepository.findLatestByInstIdIn(List.of("BTC-USDT")))
+			.thenReturn(List.of(snapshot));
 
 		AtomicReference<RuleTriggerStateEntity> stateRef = new AtomicReference<>();
-		when(ruleTriggerStateRepository.findByRuleIdAndTargetKey(11L, "BTC-USDT"))
-			.thenAnswer(invocation -> Optional.ofNullable(stateRef.get()));
+		when(ruleTriggerStateRepository.findByRuleIdInAndTargetKeyIn(List.of(11L), List.of("BTC-USDT")))
+			.thenAnswer(invocation -> stateRef.get() == null ? List.of() : List.of(stateRef.get()));
 		when(ruleTriggerStateRepository.save(any(RuleTriggerStateEntity.class)))
 			.thenAnswer(invocation -> {
 				RuleTriggerStateEntity state = invocation.getArgument(0);
@@ -265,8 +265,8 @@ class PriceRuleEvaluatorServiceTest {
 		AssetPriceSnapshotEntity snapshot = new AssetPriceSnapshotEntity();
 		snapshot.setInstId("XRP-USDT");
 		snapshot.setPrice(new BigDecimal("120"));
-		when(assetPriceSnapshotRepository.findTopByInstIdOrderByBucketTsDesc("XRP-USDT"))
-			.thenReturn(Optional.of(snapshot));
+		when(assetPriceSnapshotRepository.findLatestByInstIdIn(List.of("XRP-USDT")))
+			.thenReturn(List.of(snapshot));
 
 		RuleTriggerStateEntity existing = new RuleTriggerStateEntity();
 		ReflectionTestUtils.setField(existing, "id", 210L);
@@ -276,8 +276,8 @@ class PriceRuleEvaluatorServiceTest {
 		existing.setLastTriggeredAt(Instant.now().minusSeconds(60).minusMillis(200));
 		existing.setLastValue(new BigDecimal("90"));
 
-		when(ruleTriggerStateRepository.findByRuleIdAndTargetKey(21L, "XRP-USDT"))
-			.thenReturn(Optional.of(existing));
+		when(ruleTriggerStateRepository.findByRuleIdInAndTargetKeyIn(List.of(21L), List.of("XRP-USDT")))
+			.thenReturn(List.of(existing));
 		when(ruleTriggerStateRepository.save(any(RuleTriggerStateEntity.class)))
 			.thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -299,8 +299,8 @@ class PriceRuleEvaluatorServiceTest {
 		AssetPriceSnapshotEntity snapshot = new AssetPriceSnapshotEntity();
 		snapshot.setInstId("DOGE-USDT");
 		snapshot.setPrice(new BigDecimal("120"));
-		when(assetPriceSnapshotRepository.findTopByInstIdOrderByBucketTsDesc("DOGE-USDT"))
-			.thenReturn(Optional.of(snapshot));
+		when(assetPriceSnapshotRepository.findLatestByInstIdIn(List.of("DOGE-USDT")))
+			.thenReturn(List.of(snapshot));
 
 		RuleTriggerStateEntity existing = new RuleTriggerStateEntity();
 		ReflectionTestUtils.setField(existing, "id", 220L);
@@ -310,8 +310,8 @@ class PriceRuleEvaluatorServiceTest {
 		existing.setLastTriggeredAt(Instant.now().minusSeconds(59).plusMillis(500));
 		existing.setLastValue(new BigDecimal("90"));
 
-		when(ruleTriggerStateRepository.findByRuleIdAndTargetKey(22L, "DOGE-USDT"))
-			.thenReturn(Optional.of(existing));
+		when(ruleTriggerStateRepository.findByRuleIdInAndTargetKeyIn(List.of(22L), List.of("DOGE-USDT")))
+			.thenReturn(List.of(existing));
 		when(ruleTriggerStateRepository.save(any(RuleTriggerStateEntity.class)))
 			.thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -343,12 +343,12 @@ class PriceRuleEvaluatorServiceTest {
 		AssetPriceSnapshotEntity snapshot = new AssetPriceSnapshotEntity();
 		snapshot.setInstId("ADA-USDT");
 		snapshot.setPrice(new BigDecimal("120"));
-		when(assetPriceSnapshotRepository.findTopByInstIdOrderByBucketTsDesc("ADA-USDT"))
-			.thenReturn(Optional.of(snapshot));
+		when(assetPriceSnapshotRepository.findLatestByInstIdIn(List.of("ADA-USDT")))
+			.thenReturn(List.of(snapshot));
 
 		AtomicReference<RuleTriggerStateEntity> stateRef = new AtomicReference<>();
-		when(ruleTriggerStateRepository.findByRuleIdAndTargetKey(12L, "ADA-USDT"))
-			.thenAnswer(invocation -> Optional.ofNullable(stateRef.get()));
+		when(ruleTriggerStateRepository.findByRuleIdInAndTargetKeyIn(List.of(12L), List.of("ADA-USDT")))
+			.thenAnswer(invocation -> stateRef.get() == null ? List.of() : List.of(stateRef.get()));
 		when(ruleTriggerStateRepository.save(any(RuleTriggerStateEntity.class)))
 			.thenAnswer(invocation -> {
 				RuleTriggerStateEntity state = invocation.getArgument(0);

@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 
+import com.chainsentinel.infra.config.ScannerProperties;
 import com.chainsentinel.core.service.ScannerService;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -27,22 +28,24 @@ public class ScannerJob {
 	private static final String JOB_TAG = "scanner";
 
 	private final ScannerService scannerService;
+	private final ScannerProperties scannerProperties;
 	private final MeterRegistry meterRegistry;
 	private final AtomicBoolean running = new AtomicBoolean(false);
 	private final AtomicInteger runningGauge = new AtomicInteger(0);
 
-	public ScannerJob(ScannerService scannerService, MeterRegistry meterRegistry) {
+	public ScannerJob(ScannerService scannerService, ScannerProperties scannerProperties, MeterRegistry meterRegistry) {
 		this.scannerService = scannerService;
+		this.scannerProperties = scannerProperties;
 		this.meterRegistry = meterRegistry;
 		Gauge.builder(METRIC_JOB_RUNNING, runningGauge, AtomicInteger::get)
 			.tag("job", JOB_TAG)
 			.register(meterRegistry);
 	}
 
-//	@Scheduled(
-//		fixedDelayString = "${chainsentinel.scanner.scan-interval-ms:10000}",
-//		initialDelayString = "${chainsentinel.scanner.initial-delay-ms:3000}"
-//	)
+	@Scheduled(
+		fixedDelayString = "${chainsentinel.scanner.scan-interval-ms:10000}",
+		initialDelayString = "${chainsentinel.scanner.initial-delay-ms:3000}"
+	)
 	public void run() {
 		if (!running.compareAndSet(false, true)) {
 			log.warn("scanner.job.skip reason=already_running");
@@ -69,6 +72,9 @@ public class ScannerJob {
 
 	@EventListener(ApplicationReadyEvent.class)
 	public void runOnStartup() {
+		if (!scannerProperties.isStartupRunOnReady()) {
+			return;
+		}
 		run();
 	}
 

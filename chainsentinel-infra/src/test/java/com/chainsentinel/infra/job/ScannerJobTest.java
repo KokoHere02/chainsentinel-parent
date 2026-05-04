@@ -5,6 +5,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.chainsentinel.infra.config.ScannerProperties;
 import com.chainsentinel.core.service.ScannerService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,7 +25,7 @@ class ScannerJobTest {
     void shouldRunScanner() {
         when(scannerService.runOnce()).thenReturn(3);
 
-        ScannerJob job = new ScannerJob(scannerService, new SimpleMeterRegistry());
+        ScannerJob job = new ScannerJob(scannerService, new ScannerProperties(), new SimpleMeterRegistry());
 
         job.run();
 
@@ -33,7 +34,7 @@ class ScannerJobTest {
 
     @Test
     void shouldSkipWhenPreviousRunIsStillRunning() {
-        ScannerJob job = new ScannerJob(scannerService, new SimpleMeterRegistry());
+        ScannerJob job = new ScannerJob(scannerService, new ScannerProperties(), new SimpleMeterRegistry());
         AtomicBoolean running = (AtomicBoolean) ReflectionTestUtils.getField(job, "running");
         running.set(true);
 
@@ -48,11 +49,22 @@ class ScannerJobTest {
                 .thenThrow(new RuntimeException("boom"))
                 .thenReturn(1);
 
-        ScannerJob job = new ScannerJob(scannerService, new SimpleMeterRegistry());
+        ScannerJob job = new ScannerJob(scannerService, new ScannerProperties(), new SimpleMeterRegistry());
 
         job.run();
         job.run();
 
         verify(scannerService, times(2)).runOnce();
     }
+
+	@Test
+	void shouldSkipStartupRunWhenDisabledByConfig() {
+		ScannerProperties properties = new ScannerProperties();
+		properties.setStartupRunOnReady(false);
+		ScannerJob job = new ScannerJob(scannerService, properties, new SimpleMeterRegistry());
+
+		job.runOnStartup();
+
+		verify(scannerService, never()).runOnce();
+	}
 }

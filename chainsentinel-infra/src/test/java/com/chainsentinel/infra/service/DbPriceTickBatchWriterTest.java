@@ -3,6 +3,7 @@ package com.chainsentinel.infra.service;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -153,6 +154,7 @@ class DbPriceTickBatchWriterTest {
 		properties.setBatchSize(10);
 		properties.setQueueCapacity(123);
 		properties.setFlushIntervalMs(1500L);
+		properties.setHighWatermark(11);
 
 		DbPriceTickBatchWriter writer = new DbPriceTickBatchWriter(
 			priceTickRepository,
@@ -166,7 +168,96 @@ class DbPriceTickBatchWriterTest {
 		assertEquals(10, status.batchSize());
 		assertEquals(123, status.queueCapacity());
 		assertEquals(1500L, status.flushIntervalMs());
+		assertEquals(11, status.highWatermark());
+		assertEquals(0.0D, status.minPersistChangeRatio());
+		assertTrue(status.queueFillRatio() > 0.0D);
 		assertEquals(1, status.queueSize());
 		assertFalse(status.flushing());
+	}
+
+	@Test
+	void shouldBufferLatestQuoteByInstWhenQueueIsFull() {
+		PriceTickIngestProperties properties = new PriceTickIngestProperties();
+		properties.setEnabled(true);
+		properties.setBatchSize(2);
+		properties.setQueueCapacity(2);
+		properties.setHighWatermark(10);
+
+		SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		DbPriceTickBatchWriter writer = new DbPriceTickBatchWriter(
+			priceTickRepository,
+			properties,
+			meterRegistry
+		);
+		when(priceTickRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "BTC", "USDT", new BigDecimal("1"), 1L));
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "ETH", "USDT", new BigDecimal("2"), 2L));
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "SOL", "USDT", new BigDecimal("3"), 3L));
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "SOL", "USDT", new BigDecimal("4"), 4L));
+
+		DbPriceTickBatchWriter.TickIngestStatus statusBeforeFlush = writer.currentStatus();
+		assertEquals(3, statusBeforeFlush.queueSize());
+
+		writer.flushNow();
+
+		@SuppressWarnings("unchecked")
+		ArgumentCaptor<List<PriceTickEntity>> captor = ArgumentCaptor.forClass(List.class);
+		verify(priceTickRepository, times(2)).saveAll(captor.capture());
+		List<List<PriceTickEntity>> batches = captor.getAllValues();
+		assertEquals(2, batches.size());
+		assertEquals(2, batches.get(0).size());
+		assertEquals(1, batches.get(1).size());
+		assertEquals("SOL-USDT", batches.get(1).get(0).getInstId());
+		assertEquals(new BigDecimal("4"), batches.get(1).get(0).getPrice());
+		assertTrue(meterRegistry.get("price_ws_tick_overflow_total").counter().count() >= 1D);
+		assertEquals(0, writer.currentStatus().queueSize());
+	}
+
+	@Test
+	void shouldSuppressUnchangedQuotesBeforePersist() {
+		PriceTickIngestProperties properties = new PriceTickIngestProperties();
+		properties.setEnabled(true);
+		properties.setBatchSize(10);
+		properties.setHighWatermark(100);
+
+		SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		DbPriceTickBatchWriter writer = new DbPriceTickBatchWriter(
+			priceTickRepository,
+			properties,
+			meterRegistry
+		);
+		when(priceTickRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "BTC", "USDT", new BigDecimal("10"), 1L));
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "BTC", "USDT", new BigDecimal("10"), 2L));
+
+		writer.flushNow();
+
+		verify(priceTickRepository, times(1)).saveAll(any());
+		assertEquals(1D, meterRegistry.get("price_ws_tick_suppressed_total").tag("reason", "unchanged_price").counter().count());
+	}
+
+	@Test
+	void shouldFlushImmediatelyWhenHighWatermarkReached() {
+		PriceTickIngestProperties properties = new PriceTickIngestProperties();
+		properties.setEnabled(true);
+		properties.setBatchSize(10);
+		properties.setQueueCapacity(100);
+		properties.setHighWatermark(2);
+
+		DbPriceTickBatchWriter writer = new DbPriceTickBatchWriter(
+			priceTickRepository,
+			properties,
+			new SimpleMeterRegistry()
+		);
+		when(priceTickRepository.saveAll(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "BTC", "USDT", new BigDecimal("1"), 1L));
+		assertEquals(1, writer.currentStatus().queueSize());
+		writer.enqueue(new PriceStreamQuote("okx_ws", "OFFCHAIN", PriceInstType.SPOT, "ETH", "USDT", new BigDecimal("2"), 2L));
+
+		verify(priceTickRepository, times(1)).saveAll(any());
+		assertEquals(0, writer.currentStatus().queueSize());
 	}
 }

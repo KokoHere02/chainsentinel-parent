@@ -13,6 +13,8 @@ import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.repository.MonitorAddressRepository;
 import com.chainsentinel.infra.repository.PricePullTargetRepository;
 import com.chainsentinel.infra.repository.PriceTickRepository;
+import com.chainsentinel.infra.repository.PriceTickRepository.PriceSummaryRow;
+import com.chainsentinel.infra.repository.PriceTickRepository.PriceTickAggregateRow;
 import com.chainsentinel.price.stream.PriceStreamProviderStatus;
 import com.chainsentinel.price.stream.PriceStreamStatusService;
 import java.math.BigDecimal;
@@ -22,13 +24,9 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
-import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
@@ -45,6 +43,7 @@ public class DashboardQueryService {
 	private final PricePullTargetRepository pricePullTargetRepository;
 	private final PriceTickRepository priceTickRepository;
 	private final OkxBackfillAsyncTaskService okxBackfillAsyncTaskService;
+	private final DbPriceTickBatchWriter dbPriceTickBatchWriter;
 	private final PriceStreamStatusService priceStreamStatusService;
 	private final SolanaBalanceWsSubscriptionService solanaBalanceWsSubscriptionService;
 	private final MonitorTreeQueryService monitorTreeQueryService;
@@ -56,6 +55,7 @@ public class DashboardQueryService {
 		PricePullTargetRepository pricePullTargetRepository,
 		PriceTickRepository priceTickRepository,
 		OkxBackfillAsyncTaskService okxBackfillAsyncTaskService,
+		DbPriceTickBatchWriter dbPriceTickBatchWriter,
 		PriceStreamStatusService priceStreamStatusService,
 		SolanaBalanceWsSubscriptionService solanaBalanceWsSubscriptionService,
 		MonitorTreeQueryService monitorTreeQueryService
@@ -66,6 +66,7 @@ public class DashboardQueryService {
 		this.pricePullTargetRepository = pricePullTargetRepository;
 		this.priceTickRepository = priceTickRepository;
 		this.okxBackfillAsyncTaskService = okxBackfillAsyncTaskService;
+		this.dbPriceTickBatchWriter = dbPriceTickBatchWriter;
 		this.priceStreamStatusService = priceStreamStatusService;
 		this.solanaBalanceWsSubscriptionService = solanaBalanceWsSubscriptionService;
 		this.monitorTreeQueryService = monitorTreeQueryService;
@@ -74,7 +75,7 @@ public class DashboardQueryService {
 	public OverviewView overview() {
 		Instant dayStartUtc = LocalDate.now(ZoneOffset.UTC).atStartOfDay().toInstant(ZoneOffset.UTC);
 		long monitorAddressCount = monitorAddressRepository.count();
-		long enabledRuleCount = alertRuleRepository.findByEnabledTrue().size();
+		long enabledRuleCount = alertRuleRepository.countEnabled();
 		long todayAlertCount = alertEventRepository.countByCreatedAtAfter(dayStartUtc);
 		long todayHighSeverityAlertCount = alertEventRepository.countByCreatedAtAfterAndSeverityIn(
 			dayStartUtc,
@@ -95,41 +96,20 @@ public class DashboardQueryService {
 	public List<PriceSummaryView> priceSummary(Duration window, int limit) {
 		long windowMs = Math.max(1L, window.toMillis());
 		int safeLimit = Math.max(1, Math.min(500, limit));
-		Set<String> uniqueInstIds = new LinkedHashSet<>();
-		for (PricePullTargetEntity target : pricePullTargetRepository.findByEnabledTrueOrderByPriorityAscIdAsc()) {
-			if (target == null || !StringUtils.hasText(target.getInstId())) {
+		List<PriceSummaryRow> rows = priceTickRepository.queryLatestPriceSummaries(DEFAULT_PROVIDER, windowMs, safeLimit);
+		List<PriceSummaryView> result = new ArrayList<>(rows.size());
+		for (PriceSummaryRow row : rows) {
+			if (row == null || row.getLatestPrice() == null || row.getLatestQuoteTs() == null) {
 				continue;
 			}
-			uniqueInstIds.add(target.getInstId().trim().toUpperCase(Locale.ROOT));
-			if (uniqueInstIds.size() >= safeLimit) {
-				break;
-			}
-		}
-
-		List<PriceSummaryView> result = new ArrayList<>(uniqueInstIds.size());
-		for (String instId : uniqueInstIds) {
-			PriceTickEntity latest = priceTickRepository
-				.findTopByProviderNameAndInstIdOrderByQuoteTsDesc(DEFAULT_PROVIDER, instId)
-				.orElse(null);
-			if (latest == null || latest.getPrice() == null || latest.getQuoteTs() == null) {
-				continue;
-			}
-			long fromTs = Math.max(1L, latest.getQuoteTs() - windowMs);
-			PriceTickEntity baseline = priceTickRepository
-				.findFirstByProviderNameAndInstIdAndQuoteTsGreaterThanEqualOrderByQuoteTsAsc(
-					DEFAULT_PROVIDER,
-					instId,
-					fromTs
-				)
-				.orElse(latest);
-			BigDecimal baselinePrice = baseline.getPrice() == null ? latest.getPrice() : baseline.getPrice();
-			BigDecimal changePct = calculateChangePercent(latest.getPrice(), baselinePrice);
+			BigDecimal baselinePrice = row.getBaselinePrice() == null ? row.getLatestPrice() : row.getBaselinePrice();
+			BigDecimal changePct = calculateChangePercent(row.getLatestPrice(), baselinePrice);
 			result.add(new PriceSummaryView(
-				instId,
-				latest.getPrice(),
+				row.getInstId(),
+				row.getLatestPrice(),
 				baselinePrice,
 				changePct,
-				latest.getQuoteTs()
+				row.getLatestQuoteTs()
 			));
 		}
 		return result;
@@ -141,29 +121,24 @@ public class DashboardQueryService {
 		}
 		long safeBucketMs = Math.max(1_000L, bucketMs);
 		int safeLimit = Math.max(1, Math.min(20_000, limit));
-		String normalizedInstId = instId.trim().toUpperCase(Locale.ROOT);
-		List<PriceTickEntity> ticks = priceTickRepository.queryTicks(
+		List<PriceTickAggregateRow> rows = priceTickRepository.queryTickAggregatesByProviderAndInst(
 			DEFAULT_PROVIDER,
-			normalizedInstId,
+			instId.trim().toUpperCase(java.util.Locale.ROOT),
 			fromTs,
 			toTs,
-			PageRequest.of(0, safeLimit)
+			safeBucketMs,
+			safeLimit
 		);
-		Map<Long, PriceBucketAccumulator> buckets = new TreeMap<>();
-		for (PriceTickEntity tick : ticks) {
-			if (tick == null || tick.getQuoteTs() == null || tick.getPrice() == null) {
-				continue;
-			}
-			long bucketStartTs = (tick.getQuoteTs() / safeBucketMs) * safeBucketMs;
-			PriceBucketAccumulator acc = buckets.computeIfAbsent(bucketStartTs, ignored -> new PriceBucketAccumulator());
-			acc.accept(tick.getQuoteTs(), tick.getPrice());
-		}
-		List<PriceTrendPointView> points = new ArrayList<>(buckets.size());
-		for (Map.Entry<Long, PriceBucketAccumulator> entry : buckets.entrySet()) {
-			PriceBucketAccumulator acc = entry.getValue();
-			points.add(new PriceTrendPointView(entry.getKey(), acc.lastPrice, acc.minPrice, acc.maxPrice, acc.count));
-		}
-		return points;
+		return rows.stream()
+			.filter(row -> row.getBucketStartTs() != null)
+			.map(row -> new PriceTrendPointView(
+				row.getBucketStartTs(),
+				row.getLastPrice(),
+				row.getMinPrice(),
+				row.getMaxPrice(),
+				row.getCount()
+			))
+			.toList();
 	}
 
 	public OkxBackfillAsyncTaskService.TaskSummary backfillSummary(Instant fromAt, Instant toAt) {
@@ -200,6 +175,8 @@ public class DashboardQueryService {
 
 	public DashboardHealthView health() {
 		List<PriceStreamProviderStatus> statuses = priceStreamStatusService.listStatuses();
+		DbPriceTickBatchWriter.TickIngestStatus tickIngestStatus = dbPriceTickBatchWriter.currentStatus();
+		TickIngestHealthView tickIngestHealth = evaluateTickIngestHealth(tickIngestStatus);
 		long totalProviders = statuses.size();
 		long startedProviders = statuses.stream().filter(PriceStreamProviderStatus::started).count();
 		long connectedProviders = statuses.stream().filter(PriceStreamProviderStatus::connected).count();
@@ -213,8 +190,30 @@ public class DashboardQueryService {
 			connectedProviders,
 			providersWithRecentError,
 			okxBackfillAsyncTaskService.runningTaskCount(),
+			tickIngestStatus,
+			tickIngestHealth,
 			statuses
 		);
+	}
+
+	private TickIngestHealthView evaluateTickIngestHealth(DbPriceTickBatchWriter.TickIngestStatus status) {
+		if (status == null || !status.enabled()) {
+			return new TickIngestHealthView("DISABLED", List.of("tick_ingest_disabled"));
+		}
+		double fillRatio = status.queueFillRatio();
+		if (fillRatio >= 1.0D) {
+			return new TickIngestHealthView("DEGRADED", List.of("buffer_at_capacity"));
+		}
+		if (status.flushing() && fillRatio >= 0.8D) {
+			return new TickIngestHealthView("DEGRADED", List.of("flush_under_high_load"));
+		}
+		if (fillRatio >= 0.8D) {
+			return new TickIngestHealthView("WARN", List.of("queue_fill_ratio_high"));
+		}
+		if (status.flushing() && status.queueSize() >= status.highWatermark()) {
+			return new TickIngestHealthView("WARN", List.of("active_flush"));
+		}
+		return new TickIngestHealthView("HEALTHY", List.of("ok"));
 	}
 
 	public List<SolanaBalanceWsSubscriptionService.SplRefreshFailureStat> solanaSplFailureTop(
@@ -255,43 +254,9 @@ public class DashboardQueryService {
 		if (fromAt == null || toAt == null || fromAt.isAfter(toAt)) {
 			return List.of();
 		}
-		Map<Long, Long> countsByBucket = new TreeMap<>();
-		List<AlertEventEntity> events = alertEventRepository.findByCreatedAtBetweenOrderByCreatedAtAsc(fromAt, toAt);
-		for (AlertEventEntity event : events) {
-			if (event == null || event.getCreatedAt() == null) {
-				continue;
-			}
-			long epochSec = event.getCreatedAt().getEpochSecond();
-			long bucketStartSec = (epochSec / bucketSec) * bucketSec;
-			countsByBucket.merge(bucketStartSec, 1L, Long::sum);
-		}
-		List<AlertTrendPointView> result = new ArrayList<>(countsByBucket.size());
-		for (Map.Entry<Long, Long> entry : countsByBucket.entrySet()) {
-			result.add(new AlertTrendPointView(entry.getKey() * 1000L, entry.getValue()));
-		}
-		return result;
-	}
-
-	private static final class PriceBucketAccumulator {
-		private Long lastQuoteTs;
-		private BigDecimal lastPrice;
-		private BigDecimal minPrice;
-		private BigDecimal maxPrice;
-		private long count;
-
-		private void accept(Long quoteTs, BigDecimal price) {
-			count++;
-			if (minPrice == null || price.compareTo(minPrice) < 0) {
-				minPrice = price;
-			}
-			if (maxPrice == null || price.compareTo(maxPrice) > 0) {
-				maxPrice = price;
-			}
-			if (lastQuoteTs == null || quoteTs >= lastQuoteTs) {
-				lastQuoteTs = quoteTs;
-				lastPrice = price;
-			}
-		}
+		return alertEventRepository.countTrendByBucketBetween(fromAt, toAt, bucketSec).stream()
+			.map(row -> new AlertTrendPointView(row.getBucketStartTs(), row.getTotal()))
+			.toList();
 	}
 
 	public record OverviewView(
@@ -355,7 +320,15 @@ public class DashboardQueryService {
 		long connectedProviders,
 		long providersWithRecentError,
 		long runningBackfillCount,
+		DbPriceTickBatchWriter.TickIngestStatus tickIngest,
+		TickIngestHealthView tickIngestHealth,
 		List<PriceStreamProviderStatus> wsProviders
+	) {
+	}
+
+	public record TickIngestHealthView(
+		String status,
+		List<String> reasons
 	) {
 	}
 }

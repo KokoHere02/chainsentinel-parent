@@ -15,7 +15,11 @@ public interface AlertRuleService {
 
 	AlertRuleView patchCondition(AlertRulePatchConditionCommand command);
 
-	List<AlertRuleView> list(AlertRuleQueryCommand command);
+	default List<AlertRuleView> list(AlertRuleQueryCommand command) {
+		return list(command, 0, 100);
+	}
+
+	List<AlertRuleView> list(AlertRuleQueryCommand command, int page, int size);
 
 	AlertRuleView delete(Long id);
 

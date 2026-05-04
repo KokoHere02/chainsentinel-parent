@@ -90,6 +90,57 @@ public interface PriceTickRepository extends JpaRepository<PriceTickEntity, Long
 	);
 
 	@Query(value = """
+		with enabled_inst as (
+			select t.inst_id as inst_id,
+			       min(t.priority) as min_priority,
+			       min(t.id) as min_target_id
+			from price_pull_target t
+			where t.enabled = b'1'
+			  and t.inst_id is not null
+			  and trim(t.inst_id) <> ''
+			group by t.inst_id
+			order by min_priority asc, min_target_id asc
+			limit :instLimit
+		),
+		latest as (
+			select pt.inst_id,
+			       pt.price,
+			       pt.quote_ts,
+			       row_number() over (partition by pt.inst_id order by pt.quote_ts desc, pt.id desc) as rn
+			from price_tick pt
+			join enabled_inst ei on ei.inst_id = pt.inst_id
+			where pt.provider_name = :providerName
+		),
+		latest_one as (
+			select inst_id, price as latest_price, quote_ts as latest_quote_ts
+			from latest
+			where rn = 1
+		),
+		baseline as (
+			select pt.inst_id,
+			       pt.price,
+			       row_number() over (partition by pt.inst_id order by pt.quote_ts asc, pt.id asc) as rn
+			from price_tick pt
+			join latest_one l on l.inst_id = pt.inst_id
+			where pt.provider_name = :providerName
+			  and pt.quote_ts >= greatest(1, l.latest_quote_ts - :windowMs)
+		)
+		select ei.inst_id as instId,
+		       l.latest_price as latestPrice,
+		       coalesce(b.price, l.latest_price) as baselinePrice,
+		       l.latest_quote_ts as latestQuoteTs
+		from enabled_inst ei
+		join latest_one l on l.inst_id = ei.inst_id
+		left join baseline b on b.inst_id = ei.inst_id and b.rn = 1
+		order by ei.min_priority asc, ei.min_target_id asc
+		""", nativeQuery = true)
+	List<PriceSummaryRow> queryLatestPriceSummaries(
+		@Param("providerName") String providerName,
+		@Param("windowMs") long windowMs,
+		@Param("instLimit") int instLimit
+	);
+
+	@Query(value = """
 		select agg.bucket_start_ts as bucketStartTs,
 		       max(case when agg.rn = 1 then agg.price end) as lastPrice,
 		       min(agg.price) as minPrice,
@@ -167,5 +218,15 @@ public interface PriceTickRepository extends JpaRepository<PriceTickEntity, Long
 		BigDecimal getMaxPrice();
 
 		Long getCount();
+	}
+
+	interface PriceSummaryRow {
+		String getInstId();
+
+		BigDecimal getLatestPrice();
+
+		BigDecimal getBaselinePrice();
+
+		Long getLatestQuoteTs();
 	}
 }
