@@ -448,6 +448,164 @@ CREATE TABLE `auth_audit_log`  (
 ) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Security audit log for authentication and authorization events' ROW_FORMAT = Dynamic;
 
 -- ----------------------------
+-- Table structure for trade_account
+-- ----------------------------
+DROP TABLE IF EXISTS `trade_account`;
+CREATE TABLE `trade_account`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `name` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Trading account display name',
+  `provider` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Trading provider code, e.g. OKX',
+  `account_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'API_KEY' COMMENT 'Account type: API_KEY/WALLET',
+  `env_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'SIMULATED' COMMENT 'Environment type: SIMULATED/LIVE',
+  `api_key` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Trading API key or public identifier',
+  `api_secret_cipher` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Encrypted API secret text',
+  `passphrase_cipher` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Encrypted exchange passphrase text',
+  `enabled` bit(1) NOT NULL DEFAULT b'1' COMMENT 'Whether this trading account is enabled: 1 yes, 0 no',
+  `remark` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Operator remark for this account',
+  `created_by` bigint NULL DEFAULT NULL COMMENT 'Related auth_user.id of creator',
+  `updated_by` bigint NULL DEFAULT NULL COMMENT 'Related auth_user.id of last updater',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation time',
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Record last update time',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_trade_account_provider_name`(`provider` ASC, `name` ASC) USING BTREE,
+  INDEX `idx_trade_account_enabled_provider`(`enabled` ASC, `provider` ASC) USING BTREE,
+  INDEX `idx_trade_account_created_by`(`created_by` ASC) USING BTREE,
+  INDEX `idx_trade_account_updated_by`(`updated_by` ASC) USING BTREE,
+  CONSTRAINT `fk_trade_account_created_by` FOREIGN KEY (`created_by`) REFERENCES `auth_user` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT,
+  CONSTRAINT `fk_trade_account_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `auth_user` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Trading account configuration and encrypted credentials' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for trade_order
+-- ----------------------------
+DROP TABLE IF EXISTS `trade_order`;
+CREATE TABLE `trade_order`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `account_id` bigint NOT NULL COMMENT 'Related trade_account.id',
+  `client_order_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Client-generated idempotency order ID',
+  `provider` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Trading provider code, e.g. OKX',
+  `market_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'SPOT' COMMENT 'Market type: SPOT/MARGIN/SWAP/FUTURES',
+  `symbol` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Trading symbol, e.g. BTC-USDT',
+  `side` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Order side: BUY/SELL',
+  `order_type` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Order type: MARKET/LIMIT',
+  `price` decimal(38, 18) NULL DEFAULT NULL COMMENT 'Limit price; NULL for market order if not applicable',
+  `quantity` decimal(38, 18) NOT NULL COMMENT 'Requested base asset quantity',
+  `quote_amount` decimal(38, 18) NULL DEFAULT NULL COMMENT 'Requested quote amount when supported by provider',
+  `status` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Local order status: PENDING_SUBMIT/SUBMITTED/FILLED/CANCELED/FAILED',
+  `provider_order_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Exchange order identifier returned by provider',
+  `avg_fill_price` decimal(38, 18) NULL DEFAULT NULL COMMENT 'Average fill price from provider',
+  `filled_quantity` decimal(38, 18) NOT NULL DEFAULT 0.000000000000000000 COMMENT 'Accumulated filled base quantity',
+  `filled_amount` decimal(38, 18) NOT NULL DEFAULT 0.000000000000000000 COMMENT 'Accumulated filled quote amount',
+  `raw_response_json` json NULL COMMENT 'Sanitized raw provider response JSON snapshot',
+  `error_code` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Business or provider error code',
+  `error_message` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Business or provider error message summary',
+  `created_by` bigint NULL DEFAULT NULL COMMENT 'Related auth_user.id of order submitter',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation time',
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'Record last update time',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_trade_order_client_order_id`(`client_order_id` ASC) USING BTREE,
+  UNIQUE INDEX `uk_trade_order_provider_order_id`(`provider` ASC, `provider_order_id` ASC) USING BTREE,
+  INDEX `idx_trade_order_account_created_at`(`account_id` ASC, `created_at` ASC) USING BTREE,
+  INDEX `idx_trade_order_symbol_status`(`symbol` ASC, `status` ASC) USING BTREE,
+  INDEX `idx_trade_order_created_by`(`created_by` ASC) USING BTREE,
+  CONSTRAINT `fk_trade_order_account_id` FOREIGN KEY (`account_id`) REFERENCES `trade_account` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  CONSTRAINT `fk_trade_order_created_by` FOREIGN KEY (`created_by`) REFERENCES `auth_user` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Trading order records with local and provider status mapping' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for trade_fill
+-- ----------------------------
+DROP TABLE IF EXISTS `trade_fill`;
+CREATE TABLE `trade_fill`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `order_id` bigint NOT NULL COMMENT 'Related trade_order.id',
+  `provider_fill_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Provider fill or trade identifier',
+  `symbol` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Trading symbol, e.g. BTC-USDT',
+  `side` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Execution side: BUY/SELL',
+  `price` decimal(38, 18) NOT NULL COMMENT 'Executed price',
+  `quantity` decimal(38, 18) NOT NULL COMMENT 'Executed base quantity',
+  `fee` decimal(38, 18) NULL DEFAULT NULL COMMENT 'Provider fee amount for this fill',
+  `fee_currency` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Provider fee currency, e.g. USDT',
+  `filled_at` timestamp NULL DEFAULT NULL COMMENT 'Provider execution time',
+  `raw_response_json` json NULL COMMENT 'Sanitized raw provider fill JSON snapshot',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation time',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_trade_fill_order_provider_fill`(`order_id` ASC, `provider_fill_id` ASC) USING BTREE,
+  INDEX `idx_trade_fill_symbol_filled_at`(`symbol` ASC, `filled_at` ASC) USING BTREE,
+  CONSTRAINT `fk_trade_fill_order_id` FOREIGN KEY (`order_id`) REFERENCES `trade_order` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Trade fill details synchronized from provider' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for trade_account_balance_snapshot
+-- ----------------------------
+DROP TABLE IF EXISTS `trade_account_balance_snapshot`;
+CREATE TABLE `trade_account_balance_snapshot`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `account_id` bigint NOT NULL COMMENT 'Related trade_account.id',
+  `asset` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Account asset symbol, e.g. BTC/USDT',
+  `available` decimal(38, 18) NOT NULL DEFAULT 0.000000000000000000 COMMENT 'Available balance that can be used immediately',
+  `frozen` decimal(38, 18) NOT NULL DEFAULT 0.000000000000000000 COMMENT 'Frozen or locked balance',
+  `total` decimal(38, 18) NOT NULL DEFAULT 0.000000000000000000 COMMENT 'Total balance for the asset',
+  `source` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'HTTP' COMMENT 'Snapshot source: WS/HTTP/HTTP_FALLBACK',
+  `snapshot_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Snapshot capture time',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation time',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_trade_balance_account_asset_snapshot`(`account_id` ASC, `asset` ASC, `snapshot_time` ASC) USING BTREE,
+  INDEX `idx_trade_balance_account_snapshot`(`account_id` ASC, `snapshot_time` ASC) USING BTREE,
+  CONSTRAINT `fk_trade_balance_account_id` FOREIGN KEY (`account_id`) REFERENCES `trade_account` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Trading account asset balance snapshots for asset overview and funding checks' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for trade_position_snapshot
+-- ----------------------------
+DROP TABLE IF EXISTS `trade_position_snapshot`;
+CREATE TABLE `trade_position_snapshot`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `account_id` bigint NOT NULL COMMENT 'Related trade_account.id',
+  `symbol` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Trading symbol, e.g. BTC-USDT',
+  `base_asset` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Base asset symbol, e.g. BTC',
+  `quote_asset` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Quote asset symbol, e.g. USDT',
+  `quantity` decimal(38, 18) NOT NULL DEFAULT 0.000000000000000000 COMMENT 'Current position quantity in base asset',
+  `avg_cost` decimal(38, 18) NULL DEFAULT NULL COMMENT 'Average holding cost price if available',
+  `market_price` decimal(38, 18) NULL DEFAULT NULL COMMENT 'Reference market price at snapshot time',
+  `market_value` decimal(38, 18) NULL DEFAULT NULL COMMENT 'Reference market value at snapshot time',
+  `unrealized_pnl` decimal(38, 18) NULL DEFAULT NULL COMMENT 'Unrealized profit and loss based on avg_cost and market_price',
+  `unrealized_pnl_ratio` decimal(38, 18) NULL DEFAULT NULL COMMENT 'Unrealized profit and loss ratio based on avg_cost and market_price',
+  `source` varchar(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'HTTP' COMMENT 'Snapshot source: WS/HTTP/HTTP_FALLBACK',
+  `snapshot_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Snapshot capture time',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Record creation time',
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_trade_position_account_symbol_snapshot`(`account_id` ASC, `symbol` ASC, `snapshot_time` ASC) USING BTREE,
+  INDEX `idx_trade_position_account_snapshot`(`account_id` ASC, `snapshot_time` ASC) USING BTREE,
+  CONSTRAINT `fk_trade_position_account_id` FOREIGN KEY (`account_id`) REFERENCES `trade_account` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Trading position snapshots for holdings analysis and PnL views' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Table structure for trade_audit_log
+-- ----------------------------
+DROP TABLE IF EXISTS `trade_audit_log`;
+CREATE TABLE `trade_audit_log`  (
+  `id` bigint NOT NULL AUTO_INCREMENT COMMENT 'Primary key',
+  `user_id` bigint NULL DEFAULT NULL COMMENT 'Related auth_user.id, NULL for internal task or unknown actor',
+  `username` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Username snapshot at operation time',
+  `action` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT 'Trade action code, e.g. ACCOUNT_CREATE/ORDER_SUBMIT/ORDER_CANCEL',
+  `account_id` bigint NULL DEFAULT NULL COMMENT 'Related trade_account.id when applicable',
+  `order_id` bigint NULL DEFAULT NULL COMMENT 'Related trade_order.id when applicable',
+  `result` varchar(16) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT 'SUCCESS' COMMENT 'Operation result: SUCCESS/FAIL/REJECTED',
+  `request_summary` varchar(1024) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Sanitized request summary for audit trace',
+  `trace_id` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL COMMENT 'Request trace identifier for cross-service correlation',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'Audit event creation time',
+  PRIMARY KEY (`id`) USING BTREE,
+  INDEX `idx_trade_audit_user_created_at`(`user_id` ASC, `created_at` ASC) USING BTREE,
+  INDEX `idx_trade_audit_account_created_at`(`account_id` ASC, `created_at` ASC) USING BTREE,
+  INDEX `idx_trade_audit_order_created_at`(`order_id` ASC, `created_at` ASC) USING BTREE,
+  INDEX `idx_trade_audit_action_created_at`(`action` ASC, `created_at` ASC) USING BTREE,
+  CONSTRAINT `fk_trade_audit_user_id` FOREIGN KEY (`user_id`) REFERENCES `auth_user` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT,
+  CONSTRAINT `fk_trade_audit_account_id` FOREIGN KEY (`account_id`) REFERENCES `trade_account` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT,
+  CONSTRAINT `fk_trade_audit_order_id` FOREIGN KEY (`order_id`) REFERENCES `trade_order` (`id`) ON DELETE SET NULL ON UPDATE RESTRICT
+) ENGINE = InnoDB AUTO_INCREMENT = 1 CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci COMMENT = 'Trade operation audit log for account and order actions' ROW_FORMAT = Dynamic;
+
+-- ----------------------------
 -- Default seed data for auth tables
 -- ----------------------------
 INSERT INTO `auth_role` (`id`, `role_code`, `role_name`, `enabled`, `created_at`) VALUES
