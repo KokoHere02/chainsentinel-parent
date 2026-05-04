@@ -7,13 +7,18 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "chainsentinel.auth")
 public class AuthProperties {
 
-	private String jwtSecret = "change-me-in-production";
+	public static final String DEFAULT_JWT_SECRET = "change-me-in-production";
+
+	private String jwtSecret = DEFAULT_JWT_SECRET;
 	private long accessTokenTtlSeconds = 7200;
 	private long refreshTokenTtlSeconds = 604800;
 	private int loginFailMaxAttempts = 5;
 	private long loginFailWindowSeconds = 300;
 	private long loginLockSeconds = 600;
 	private int passwordMinLength = 10;
+	private boolean bootstrapAdminEnabled;
+	private String bootstrapAdminUsername;
+	private String bootstrapAdminCredential;
 
 	public String getJwtSecret() {
 		return jwtSecret;
@@ -69,5 +74,29 @@ public class AuthProperties {
 
 	public void setPasswordMinLength(int passwordMinLength) {
 		this.passwordMinLength = passwordMinLength;
+	}
+
+	public boolean isBootstrapAdminEnabled() {
+		return bootstrapAdminEnabled;
+	}
+
+	public void setBootstrapAdminEnabled(boolean bootstrapAdminEnabled) {
+		this.bootstrapAdminEnabled = bootstrapAdminEnabled;
+	}
+
+	public String getBootstrapAdminUsername() {
+		return bootstrapAdminUsername;
+	}
+
+	public void setBootstrapAdminUsername(String bootstrapAdminUsername) {
+		this.bootstrapAdminUsername = bootstrapAdminUsername;
+	}
+
+	public String getBootstrapAdminPassword() {
+		return bootstrapAdminCredential;
+	}
+
+	public void setBootstrapAdminPassword(String value) {
+		this.bootstrapAdminCredential = value;
 	}
 }

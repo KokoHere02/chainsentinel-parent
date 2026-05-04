@@ -26,6 +26,7 @@ public class JwtTokenService {
 	public JwtTokenService(ObjectMapper objectMapper, AuthProperties authProperties) {
 		this.objectMapper = objectMapper;
 		this.authProperties = authProperties;
+		validateSecret(authProperties);
 	}
 
 	public String issueToken(AuthPrincipal principal) {
@@ -104,5 +105,14 @@ public class JwtTokenService {
 			return number.longValue();
 		}
 		return Long.parseLong(String.valueOf(raw));
+	}
+
+	private void validateSecret(AuthProperties properties) {
+		String secret = properties.getJwtSecret();
+		if (secret == null || secret.isBlank() || AuthProperties.DEFAULT_JWT_SECRET.equals(secret)) {
+			throw new IllegalStateException(
+				"chainsentinel.auth.jwt-secret must be configured explicitly and must not use the default placeholder"
+			);
+		}
 	}
 }

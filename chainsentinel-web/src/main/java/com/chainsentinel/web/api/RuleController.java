@@ -52,9 +52,11 @@ public class RuleController {
 	public List<AlertRuleView> list(
 		@RequestParam(required = false) AlertRuleType type,
 		@RequestParam(required = false) Boolean enabled,
-		@RequestParam(required = false) String keyword
+		@RequestParam(required = false) String keyword,
+		@RequestParam(name = "page", defaultValue = "0") int page,
+		@RequestParam(name = "size", defaultValue = "100") int size
 	) {
-		return alertRuleService.list(new AlertRuleQueryCommand(type, enabled, keyword));
+		return alertRuleService.list(new AlertRuleQueryCommand(type, enabled, keyword), page, size);
 	}
 
 	@GetMapping("/{id}")

@@ -51,8 +51,11 @@ public class AdminUserController {
 
 	@GetMapping
 	@RateLimit(name = "admin.user.list", permits = 60, windowSeconds = 60, scope = RateLimit.Scope.IP, message = "Too many user list requests")
-	public List<AdminUserService.UserView> listUsers() {
-		return adminUserService.listUsers();
+	public List<AdminUserService.UserView> listUsers(
+		@org.springframework.web.bind.annotation.RequestParam(name = "page", defaultValue = "0") int page,
+		@org.springframework.web.bind.annotation.RequestParam(name = "size", defaultValue = "100") int size
+	) {
+		return adminUserService.listUsers(page, size);
 	}
 
 	@PatchMapping("/{id}/password")

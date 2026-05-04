@@ -4,13 +4,18 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.chainsentinel.core.service.TradeOrderService;
+import com.chainsentinel.core.service.dto.TradeOrderView;
 import com.chainsentinel.web.api.OrderController;
 import com.chainsentinel.web.api.support.GlobalExceptionHandler;
 import com.chainsentinel.web.auth.audit.AuditEventPublisher;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -28,7 +33,13 @@ class AuthInterceptorTest {
 		jwtTokenService = new JwtTokenService(new ObjectMapper(), properties);
 		AuditEventPublisher publisher = new AuditEventPublisher(event -> {});
 		AuthInterceptor authInterceptor = new AuthInterceptor(jwtTokenService, publisher);
-		mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(publisher))
+		TradeOrderService tradeOrderService = Mockito.mock(TradeOrderService.class);
+		Mockito.when(tradeOrderService.create(Mockito.any(), Mockito.any())).thenReturn(new TradeOrderView(
+			1L, 1L, "c1", "OKX", "SPOT", "BTC-USDT", "BUY", "MARKET",
+			null, BigDecimal.ONE, null, "SUBMITTED", "o1", null, BigDecimal.ZERO, BigDecimal.ZERO,
+			null, null, 3L, Instant.now(), Instant.now()
+		));
+		mockMvc = MockMvcBuilders.standaloneSetup(new OrderController(tradeOrderService))
 			.setControllerAdvice(new GlobalExceptionHandler())
 			.addInterceptors(authInterceptor)
 			.build();
@@ -40,8 +51,10 @@ class AuthInterceptorTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 					{
-					  "symbol": "BTCUSDT",
+					  "accountId": 1,
+					  "symbol": "BTC-USDT",
 					  "side": "BUY",
+					  "orderType": "MARKET",
 					  "quantity": 1
 					}
 					"""))
@@ -56,8 +69,10 @@ class AuthInterceptorTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 					{
-					  "symbol": "BTCUSDT",
+					  "accountId": 1,
+					  "symbol": "BTC-USDT",
 					  "side": "BUY",
+					  "orderType": "MARKET",
 					  "quantity": 1
 					}
 					"""))
@@ -73,8 +88,10 @@ class AuthInterceptorTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 					{
-					  "symbol": "BTCUSDT",
+					  "accountId": 1,
+					  "symbol": "BTC-USDT",
 					  "side": "BUY",
+					  "orderType": "MARKET",
 					  "quantity": 1
 					}
 					"""))
@@ -90,8 +107,10 @@ class AuthInterceptorTest {
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""
 					{
-					  "symbol": "BTCUSDT",
+					  "accountId": 1,
+					  "symbol": "BTC-USDT",
 					  "side": "BUY",
+					  "orderType": "MARKET",
 					  "quantity": 1
 					}
 					"""))

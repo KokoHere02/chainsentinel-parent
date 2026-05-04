@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.chainsentinel.infra.service.DashboardQueryService;
+import com.chainsentinel.infra.service.DbPriceTickBatchWriter;
 import com.chainsentinel.infra.service.OkxBackfillAsyncTaskService;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -117,5 +118,26 @@ class DashboardControllerTest {
 			.andExpect(jsonPath("$", hasSize(1)))
 			.andExpect(jsonPath("$[0].taskId", is("okx-1-1")))
 			.andExpect(jsonPath("$[0].status", is("RUNNING")));
+	}
+
+	@Test
+	void shouldReturnDashboardHealth() throws Exception {
+		when(dashboardQueryService.health()).thenReturn(new DashboardQueryService.DashboardHealthView(
+			1L,
+			1L,
+			1L,
+			0L,
+			2L,
+			new DbPriceTickBatchWriter.TickIngestStatus(true, 200, 20000, 1000L, 200, 0.0D, 0.06D, 12, false),
+			new DashboardQueryService.TickIngestHealthView("HEALTHY", List.of("ok")),
+			List.of()
+		));
+
+		mockMvc.perform(get("/api/dashboard/health"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.tickIngest.batchSize", is(200)))
+			.andExpect(jsonPath("$.tickIngest.highWatermark", is(200)))
+			.andExpect(jsonPath("$.tickIngest.queueSize", is(12)))
+			.andExpect(jsonPath("$.tickIngestHealth.status", is("HEALTHY")));
 	}
 }
