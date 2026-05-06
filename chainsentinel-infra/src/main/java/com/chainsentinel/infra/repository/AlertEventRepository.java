@@ -77,13 +77,17 @@ group by ae.sendStatus, ae.lastError
 	);
 
 	@Query(value = """
-		select floor(unix_timestamp(a.created_at) / :bucketSec) * :bucketSec * 1000 as bucketStartTs,
-		       count(*) as total
-		from alert_event a
-		where a.created_at >= :fromAt
-		  and a.created_at <= :toAt
-		group by floor(unix_timestamp(a.created_at) / :bucketSec)
-		order by bucketStartTs asc
+		select agg.bucket_key * :bucketSec * 1000 as bucketStartTs,
+		       agg.total as total
+		from (
+			select floor(unix_timestamp(a.created_at) / :bucketSec) as bucket_key,
+			       count(*) as total
+			from alert_event a
+			where a.created_at >= :fromAt
+			  and a.created_at <= :toAt
+			group by floor(unix_timestamp(a.created_at) / :bucketSec)
+		) agg
+		order by agg.bucket_key asc
 		""", nativeQuery = true)
 	List<AlertTrendBucketRow> countTrendByBucketBetween(
 		@Param("fromAt") Instant fromAt,

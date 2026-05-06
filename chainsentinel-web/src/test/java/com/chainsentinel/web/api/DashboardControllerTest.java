@@ -121,6 +121,32 @@ class DashboardControllerTest {
 	}
 
 	@Test
+	void shouldReturnAlertSummary() throws Exception {
+		Instant fromAt = Instant.parse("2026-05-04T12:00:00Z");
+		Instant toAt = Instant.parse("2026-05-05T12:00:00Z");
+		when(dashboardQueryService.alertSummary(eq(fromAt), eq(toAt), eq(3600L), eq(10))).thenReturn(
+			new DashboardQueryService.AlertSummaryView(
+				List.of(new DashboardQueryService.AlertTrendPointView(1746360000000L, 3L)),
+				List.of(new DashboardQueryService.AlertSeverityCountView("HIGH", 2L)),
+				List.of(new DashboardQueryService.AlertRuleTopView(1L, "large-transfer", 2L))
+			)
+		);
+
+		mockMvc.perform(get("/api/dashboard/alerts/summary")
+				.param("from", String.valueOf(fromAt.toEpochMilli()))
+				.param("to", String.valueOf(toAt.toEpochMilli()))
+				.param("bucketSec", "3600")
+				.param("topRules", "10"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.trend", hasSize(1)))
+			.andExpect(jsonPath("$.trend[0].total", is(3)))
+			.andExpect(jsonPath("$.severities[0].severity", is("HIGH")))
+			.andExpect(jsonPath("$.topByRule[0].ruleName", is("large-transfer")));
+
+		verify(dashboardQueryService).alertSummary(fromAt, toAt, 3600L, 10);
+	}
+
+	@Test
 	void shouldReturnDashboardHealth() throws Exception {
 		when(dashboardQueryService.health()).thenReturn(new DashboardQueryService.DashboardHealthView(
 			1L,
