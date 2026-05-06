@@ -15,19 +15,24 @@ public class PriceFrontendWebSocketConfig implements WebSocketConfigurer {
 	private static final String DEFAULT_ALLOWED_ORIGIN = "http://localhost:5173";
 
 	private final PriceFrontendWebSocketHandler priceFrontendWebSocketHandler;
+	private final PriceMarketFrontendWebSocketHandler priceMarketFrontendWebSocketHandler;
 	private final String[] allowedOrigins;
 
 	public PriceFrontendWebSocketConfig(
 		PriceFrontendWebSocketHandler priceFrontendWebSocketHandler,
+		PriceMarketFrontendWebSocketHandler priceMarketFrontendWebSocketHandler,
 		@Value("${chainsentinel.web.allowed-origins:http://localhost:5173}") String allowedOriginsValue
 	) {
 		this.priceFrontendWebSocketHandler = priceFrontendWebSocketHandler;
+		this.priceMarketFrontendWebSocketHandler = priceMarketFrontendWebSocketHandler;
 		this.allowedOrigins = parseAllowedOrigins(allowedOriginsValue);
 	}
 
 	@Override
 	public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
 		registry.addHandler(priceFrontendWebSocketHandler, "/ws/price")
+			.setAllowedOrigins(allowedOrigins);
+		registry.addHandler(priceMarketFrontendWebSocketHandler, "/ws/price-market")
 			.setAllowedOrigins(allowedOrigins);
 	}
 
