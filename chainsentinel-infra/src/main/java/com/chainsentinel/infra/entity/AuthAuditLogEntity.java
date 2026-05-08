@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.time.Instant;
 
@@ -46,7 +47,7 @@ public class AuthAuditLogEntity {
 	@Column(name = "request_method", length = 16)
 	private String requestMethod;
 
-	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+	@Column(name = "created_at", nullable = false, updatable = false)
 	private Instant createdAt;
 
 	public Long getId() {
@@ -135,5 +136,12 @@ public class AuthAuditLogEntity {
 
 	public Instant getCreatedAt() {
 		return createdAt;
+	}
+
+	@PrePersist
+	void prePersist() {
+		if (createdAt == null) {
+			createdAt = Instant.now();
+		}
 	}
 }

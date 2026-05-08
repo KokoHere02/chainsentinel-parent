@@ -80,18 +80,3 @@ WHERE NOT EXISTS (SELECT 1 FROM auth_role WHERE role_code = 'OPERATOR');
 INSERT INTO auth_role(role_code, role_name, enabled)
 SELECT 'TRADER', 'Trader', b'1'
 WHERE NOT EXISTS (SELECT 1 FROM auth_role WHERE role_code = 'TRADER');
-
-INSERT INTO auth_user(username, password_hash, enabled)
-SELECT 'admin', '$2a$10$7EqJtq98hPqEX7fNZaFWoO5j6N6byN1Nsx3Rp3XIanFkFJxuxMxDP', b'1'
-WHERE NOT EXISTS (SELECT 1 FROM auth_user WHERE username = 'admin');
-
-INSERT INTO auth_user_role(user_id, role_id)
-SELECT u.id, r.id
-FROM auth_user u
-JOIN auth_role r ON r.role_code = 'ADMIN'
-WHERE u.username = 'admin'
-  AND NOT EXISTS (
-      SELECT 1
-      FROM auth_user_role ur
-      WHERE ur.user_id = u.id AND ur.role_id = r.id
-  );

@@ -1,0 +1,118 @@
+### ChainSentinel Auth API tests
+@baseUrl = http://localhost:8080
+@accessToken = replace-with-access-token
+@refreshToken = replace-with-refresh-token
+@targetUserId = 2
+@targetUsername = alice
+@targetSessionTokenId = replace-with-revoke-token-id
+
+### 1) Login
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "password"
+}
+
+### 2) Refresh token
+POST {{baseUrl}}/api/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### 3) Logout current refresh token
+POST {{baseUrl}}/api/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
+### 4) Current profile
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{accessToken}}
+
+### 5) Change own password
+PATCH {{baseUrl}}/api/auth/password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "password",
+  "newPassword": "new-password"
+}
+
+### 6) Logout all own sessions
+POST {{baseUrl}}/api/auth/logout-all
+Authorization: Bearer {{accessToken}}
+
+### 7) My audit logs
+GET {{baseUrl}}/api/auth/audit?limit=50
+Authorization: Bearer {{accessToken}}
+
+### 8) List my active sessions
+GET {{baseUrl}}/api/auth/sessions
+Authorization: Bearer {{accessToken}}
+
+### 9) Revoke one of my sessions
+DELETE {{baseUrl}}/api/auth/sessions/{{targetSessionTokenId}}
+Authorization: Bearer {{accessToken}}
+
+### 10) Revoke all my sessions
+DELETE {{baseUrl}}/api/auth/sessions
+Authorization: Bearer {{accessToken}}
+
+### 11) Create user as admin
+POST {{baseUrl}}/api/admin/users
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "username": "{{targetUsername}}",
+  "password": "password",
+  "roles": ["OPERATOR"],
+  "enabled": true
+}
+
+### 12) List users as admin
+GET {{baseUrl}}/api/admin/users
+Authorization: Bearer {{accessToken}}
+
+### 13) Reset target user password as admin
+PATCH {{baseUrl}}/api/admin/users/{{targetUserId}}/password
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "password": "password"
+}
+
+### 14) Update target user roles as admin
+PATCH {{baseUrl}}/api/admin/users/{{targetUserId}}/roles
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "roles": ["TRADER"]
+}
+
+### 15) Disable target user as admin
+PATCH {{baseUrl}}/api/admin/users/{{targetUserId}}/status
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "enabled": false
+}
+
+### 16) Re-enable target user as admin
+PATCH {{baseUrl}}/api/admin/users/{{targetUserId}}/status
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "enabled": true
+}

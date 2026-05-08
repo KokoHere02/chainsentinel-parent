@@ -1,0 +1,19 @@
+@baseUrl = http://localhost:8080
+@token = Bearer REPLACE_ME
+
+### 下单审计明细 - 拒单
+GET {{baseUrl}}/api/admin/trade-audit/order-create?result=FAIL&rejectCode=TRADE_DISABLED&from=2026-05-08T00:00:00Z&to=2026-05-09T00:00:00Z&page=0&size=50
+Authorization: {{token}}
+
+### 下单审计明细 - 成功
+GET {{baseUrl}}/api/admin/trade-audit/order-create?result=SUCCESS&from=2026-05-08T00:00:00Z&to=2026-05-09T00:00:00Z&page=0&size=50
+Authorization: {{token}}
+
+### 下单审计汇总
+
+GET {{baseUrl}}/api/admin/trade-audit/order-create/summary?from=2026-05-08T00:00:00Z&to=2026-05-09T00:00:00Z&top=10
+Authorization: {{token}}
+
+### 下单审计趋势
+GET {{baseUrl}}/api/admin/trade-audit/order-create/trend?from=2026-05-08T00:00:00Z&to=2026-05-09T00:00:00Z&bucketSec=3600
+Authorization: {{token}}
