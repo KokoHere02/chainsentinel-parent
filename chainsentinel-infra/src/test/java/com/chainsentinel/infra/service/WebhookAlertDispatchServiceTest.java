@@ -276,6 +276,33 @@ class WebhookAlertDispatchServiceTest {
 		assertEquals(1.0, meterRegistry.get("alert_retry_total").counter().count());
 	}
 
+	@Test
+	void dispatchPendingShouldCancelAlertWhenAssetEventAlreadyReorged() {
+		AlertEventEntity alert = new AlertEventEntity();
+		ReflectionTestUtils.setField(alert, "id", 10L);
+		alert.setRuleId(12L);
+		alert.setAssetEventId(15L);
+		alert.setSeverity("HIGH");
+		alert.setSendStatus("PENDING");
+		alert.setRetryCount(0);
+
+		AssetEventEntity event = new AssetEventEntity();
+		ReflectionTestUtils.setField(event, "id", 15L);
+		event.setStatus(com.chainsentinel.core.model.EventStatus.REORGED);
+
+		when(alertEventRepository.findTop100BySendStatusOrderByIdAsc("PENDING")).thenReturn(List.of(alert));
+		when(assetEventRepository.findById(15L)).thenReturn(Optional.of(event));
+
+		int sent = service.dispatchPending();
+
+		assertEquals(0, sent);
+		verify(restTemplate, never()).postForEntity(anyString(), any(HttpEntity.class), eq(String.class));
+		ArgumentCaptor<AlertEventEntity> captor = ArgumentCaptor.forClass(AlertEventEntity.class);
+		verify(alertEventRepository).save(captor.capture());
+		assertEquals("CANCELED", captor.getValue().getSendStatus());
+		assertEquals("asset event reorged", captor.getValue().getLastError());
+	}
+
 	private String buildPriceRuleJson() throws Exception {
 		PriceRuleCondition condition = new PriceRuleCondition();
 		condition.setSymbol("BTC-USDT");

@@ -14,6 +14,7 @@ import com.chainsentinel.core.rule.model.PriceRuleSpec;
 import com.chainsentinel.core.service.AlertDispatchService;
 import com.chainsentinel.infra.config.AlertProperties;
 import com.chainsentinel.infra.entity.AlertEventEntity;
+import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.repository.AlertEventRepository;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.repository.AssetEventRepository;
@@ -41,6 +42,7 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
 	private static final String STATUS_PENDING = "PENDING";
 	private static final String STATUS_SENT = "SENT";
 	private static final String STATUS_FAILED = "FAILED";
+	private static final String STATUS_CANCELED = "CANCELED";
 	private static final String METRIC_ALERT_SEND_TOTAL = "alert_send_total";
 	private static final String METRIC_ALERT_SEND_SUCCESS_TOTAL = "alert_send_success_total";
 	private static final String METRIC_ALERT_RETRY_TOTAL = "alert_retry_total";
@@ -148,10 +150,19 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
 	}
 
 	private boolean doSend(AlertEventEntity alert) {
+		Optional<AssetEventEntity> assetEvent = loadAssetEvent(alert);
+		if (assetEvent.isPresent() && assetEvent.get().getStatus() == com.chainsentinel.core.model.EventStatus.REORGED) {
+			alert.setSendStatus(STATUS_CANCELED);
+			alert.setLastError("asset event reorged");
+			alertEventRepository.save(alert);
+			log.warn("alert.dispatch.skip_reorged alertId={} assetEventId={}", alert.getId(), alert.getAssetEventId());
+			return false;
+		}
+
 		alertSendTotal.incrementAndGet();
 		meterRegistry.counter(METRIC_ALERT_SEND_TOTAL).increment();
 		try {
-			Map<String, Object> payload = buildPayload(alert);
+			Map<String, Object> payload = buildPayload(alert, assetEvent);
 			HttpHeaders headers = new HttpHeaders();
 			headers.setContentType(MediaType.APPLICATION_JSON);
 			ResponseEntity<String> response = restTemplate.postForEntity(
@@ -178,7 +189,7 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
 		}
 	}
 
-	private Map<String, Object> buildPayload(AlertEventEntity alert) {
+	private Map<String, Object> buildPayload(AlertEventEntity alert, Optional<AssetEventEntity> assetEvent) {
 		Map<String, Object> payload = new HashMap<>();
 		payload.put("alertId", alert.getId());
 		payload.put("ruleId", alert.getRuleId());
@@ -193,22 +204,27 @@ public class WebhookAlertDispatchService implements AlertDispatchService {
 			}
 		});
 
-		if (alert.getAssetEventId() != null) {
-			assetEventRepository.findById(alert.getAssetEventId()).ifPresent(event -> {
-				payload.put("chain", event.getChain());
-				payload.put("network", event.getNetwork());
-				payload.put("txHash", event.getTxHash());
-				payload.put("from", event.getFromAddress());
-				payload.put("to", event.getToAddress());
-				payload.put("amount", event.getAmount());
-				if (event.getTokenType() != null) {
-					payload.put("tokenType", event.getTokenType().name());
-				}
-				payload.put("occurredAt", event.getOccurredAt());
-			});
-		}
+		assetEvent.ifPresent(event -> {
+			payload.put("chain", event.getChain());
+			payload.put("network", event.getNetwork());
+			payload.put("txHash", event.getTxHash());
+			payload.put("from", event.getFromAddress());
+			payload.put("to", event.getToAddress());
+			payload.put("amount", event.getAmount());
+			if (event.getTokenType() != null) {
+				payload.put("tokenType", event.getTokenType().name());
+			}
+			payload.put("occurredAt", event.getOccurredAt());
+		});
 
 		return payload;
+	}
+
+	private Optional<AssetEventEntity> loadAssetEvent(AlertEventEntity alert) {
+		if (alert.getAssetEventId() == null) {
+			return Optional.empty();
+		}
+		return assetEventRepository.findById(alert.getAssetEventId());
 	}
 
 	private void enrichPricePayload(Map<String, Object> payload, String conditionJson) {

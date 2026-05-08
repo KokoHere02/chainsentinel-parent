@@ -3,7 +3,9 @@ package com.chainsentinel.infra.service;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import com.chainsentinel.core.model.EventStatus;
@@ -14,9 +16,11 @@ import com.chainsentinel.infra.entity.AssetEventEntity;
 import com.chainsentinel.infra.entity.ChainConfigEntity;
 import com.chainsentinel.infra.repository.AssetEventRepository;
 import com.chainsentinel.infra.repository.ChainConfigRepository;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.DefaultBlockParameter;
 import org.web3j.protocol.exceptions.ClientConnectionException;
 import org.web3j.protocol.http.HttpService;
 
@@ -28,25 +32,32 @@ import org.springframework.util.StringUtils;
 public class DefaultEventConfirmationService implements EventConfirmationService {
 
 	private static final Logger log = LoggerFactory.getLogger(DefaultEventConfirmationService.class);
+	private static final String METRIC_EVENT_REORG_TOTAL = "event_reorg_total";
 
 	private final AssetEventRepository assetEventRepository;
 	private final ChainConfigRepository chainConfigRepository;
 	private final ScannerProperties scannerProperties;
 	private final ConfirmationProperties confirmationProperties;
 	private final ChainConfigRpcUrlCodec chainConfigRpcUrlCodec;
+	private final ReorgAlertCleanupService reorgAlertCleanupService;
+	private final MeterRegistry meterRegistry;
 
 	public DefaultEventConfirmationService(
 		AssetEventRepository assetEventRepository,
 		ChainConfigRepository chainConfigRepository,
 		ScannerProperties scannerProperties,
 		ConfirmationProperties confirmationProperties,
-		ChainConfigRpcUrlCodec chainConfigRpcUrlCodec
+		ChainConfigRpcUrlCodec chainConfigRpcUrlCodec,
+		ReorgAlertCleanupService reorgAlertCleanupService,
+		MeterRegistry meterRegistry
 	) {
 		this.assetEventRepository = assetEventRepository;
 		this.chainConfigRepository = chainConfigRepository;
 		this.scannerProperties = scannerProperties;
 		this.confirmationProperties = confirmationProperties;
 		this.chainConfigRpcUrlCodec = chainConfigRpcUrlCodec;
+		this.reorgAlertCleanupService = reorgAlertCleanupService;
+		this.meterRegistry = meterRegistry;
 	}
 
 	@Override
@@ -81,6 +92,8 @@ public class DefaultEventConfirmationService implements EventConfirmationService
 			long cursorId = 0L;
 			int updated = 0;
 			int promoted = 0;
+			int reorged = 0;
+			Map<Long, String> blockHashCache = new HashMap<>();
 
 			while (true) {
 				List<AssetEventEntity> batch = assetEventRepository
@@ -98,6 +111,15 @@ public class DefaultEventConfirmationService implements EventConfirmationService
 				List<AssetEventEntity> changed = new ArrayList<>();
 				for (AssetEventEntity event : batch) {
 					cursorId = event.getId();
+
+					if (isReorgedEvent(chainConfig, event, blockHashCache)) {
+						event.setConfirmations(0);
+						event.setStatus(EventStatus.REORGED);
+						changed.add(event);
+						reorged++;
+						meterRegistry.counter(METRIC_EVENT_REORG_TOTAL, "source", "confirmation").increment();
+						continue;
+					}
 
 					int confirmations = confirmations(latestBlock, event.getBlockNumber());
 					EventStatus status = confirmations >= chainConfig.getConfirmRequired()
@@ -121,6 +143,17 @@ public class DefaultEventConfirmationService implements EventConfirmationService
 				if (!changed.isEmpty()) {
 					assetEventRepository.saveAll(changed);
 					updated += changed.size();
+					int canceledAlerts = reorgAlertCleanupService.cancelPendingAlertsForReorgedEvents(
+						changed.stream()
+							.filter(event -> event.getStatus() == EventStatus.REORGED)
+							.map(AssetEventEntity::getId)
+							.filter(Objects::nonNull)
+							.toList()
+					);
+					if (canceledAlerts > 0) {
+						log.warn("Confirmation advance canceled stale alerts: chain={}-{}, canceledAlerts={}",
+							chain, network, canceledAlerts);
+					}
 				}
 
 				if (batch.size() < batchSize) {
@@ -128,8 +161,8 @@ public class DefaultEventConfirmationService implements EventConfirmationService
 				}
 			}
 
-			log.info("Confirmation advance finished: chain={}-{}, pending={}, updated={}, promoted={}, latestBlock={}",
-				chain, network, pendingCount, updated, promoted, latestBlock);
+			log.info("Confirmation advance finished: chain={}-{}, pending={}, updated={}, promoted={}, reorged={}, latestBlock={}",
+				chain, network, pendingCount, updated, promoted, reorged, latestBlock);
 			return updated;
 		} catch (Exception ex) {
 			log.error("Confirmation advance failed for chain {}-{}", chain, network, ex);
@@ -143,6 +176,21 @@ public class DefaultEventConfirmationService implements EventConfirmationService
 			try {
 				BigInteger latest = web3j.ethBlockNumber().send().getBlockNumber();
 				return latest.longValueExact();
+			} finally {
+				web3j.shutdown();
+			}
+		});
+	}
+
+	String fetchCanonicalBlockHash(ChainConfigEntity chainConfig, long blockNumber) throws IOException {
+		return rpcCallWithRetry("eth_getBlockByNumber:" + blockNumber, () -> {
+			Web3j web3j = Web3j.build(new HttpService(chainConfig.getRpcUrl()));
+			try {
+				var response = web3j.ethGetBlockByNumber(
+					DefaultBlockParameter.valueOf(BigInteger.valueOf(blockNumber)),
+					false
+				).send();
+				return response.getBlock() == null ? null : response.getBlock().getHash();
 			} finally {
 				web3j.shutdown();
 			}
@@ -170,6 +218,22 @@ public class DefaultEventConfirmationService implements EventConfirmationService
 		}
 		String scheme = UrlSchemeSupport.schemeOf(rpcUrl);
 		return "http".equals(scheme) || "https".equals(scheme);
+	}
+
+	private boolean isReorgedEvent(
+		ChainConfigEntity chainConfig,
+		AssetEventEntity event,
+		Map<Long, String> blockHashCache
+	) throws IOException {
+		if (event.getBlockNumber() == null || !StringUtils.hasText(event.getBlockHash())) {
+			return false;
+		}
+		String canonicalHash = blockHashCache.get(event.getBlockNumber());
+		if (canonicalHash == null && !blockHashCache.containsKey(event.getBlockNumber())) {
+			canonicalHash = fetchCanonicalBlockHash(chainConfig, event.getBlockNumber());
+			blockHashCache.put(event.getBlockNumber(), canonicalHash);
+		}
+		return StringUtils.hasText(canonicalHash) && !event.getBlockHash().equalsIgnoreCase(canonicalHash);
 	}
 
 	private int confirmations(long latest, long blockNumber) {

@@ -5,7 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "chainsentinel.price.ingest")
 public class PriceIngestProperties {
 
-	private boolean enabled = true;
+	private boolean enabled = false;
 	private long intervalMs = 15000L;
 	private long initialDelayMs = 5000L;
 	private boolean startupRunOnReady = false;

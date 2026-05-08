@@ -20,6 +20,8 @@ public interface AlertEventRepository extends JpaRepository<AlertEventEntity, Lo
 
 	List<AlertEventEntity> findTop100BySendStatusOrderByIdAsc(String sendStatus);
 
+	List<AlertEventEntity> findByAssetEventIdAndSendStatusIn(Long assetEventId, List<String> sendStatuses);
+
 	@Query("""
 		select ae from AlertEventEntity ae
 		where ae.sendStatus in :sendStatuses

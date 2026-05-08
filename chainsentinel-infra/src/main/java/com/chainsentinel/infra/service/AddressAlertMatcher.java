@@ -3,6 +3,7 @@ package com.chainsentinel.infra.service;
 import java.util.List;
 
 import com.chainsentinel.core.model.AlertRuleType;
+import com.chainsentinel.core.model.EventStatus;
 import com.chainsentinel.infra.entity.AlertEventEntity;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
 import com.chainsentinel.infra.entity.AssetEventEntity;
@@ -41,7 +42,7 @@ public class AddressAlertMatcher {
 	}
 
 	public void evaluate(AssetEventEntity event) {
-		if (event.getId() == null) {
+		if (event.getId() == null || event.getStatus() == EventStatus.REORGED) {
 			return;
 		}
 

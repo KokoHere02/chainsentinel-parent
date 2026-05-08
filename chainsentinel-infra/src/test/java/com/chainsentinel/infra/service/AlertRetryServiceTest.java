@@ -60,4 +60,22 @@ class AlertRetryServiceTest {
 		verify(alertDispatchService).retryOne(12L);
 		verify(alertDispatchService).retryOne(13L);
 	}
+
+	@Test
+	void shouldNotRetryCanceledAlerts() {
+		AlertEventEntity canceled = new AlertEventEntity();
+		ReflectionTestUtils.setField(canceled, "id", 21L);
+		canceled.setSendStatus("CANCELED");
+
+		when(alertEventRepository.findBySendStatusInOrderByIdAsc(eq(List.of("FAILED", "PENDING")), any()))
+			.thenReturn(List.of());
+
+		AlertRetryService.BatchRetryResult result = alertRetryService.retryFailed(100);
+
+		assertEquals(0, result.total());
+		assertEquals(0, result.success());
+		assertEquals(0, result.failed());
+		assertEquals(0, result.skipped());
+		verify(alertEventRepository).findBySendStatusInOrderByIdAsc(eq(List.of("FAILED", "PENDING")), any());
+	}
 }

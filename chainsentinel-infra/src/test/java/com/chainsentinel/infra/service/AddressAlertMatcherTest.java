@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.chainsentinel.core.model.EventStatus;
 import com.chainsentinel.core.model.AlertRuleType;
 import com.chainsentinel.infra.entity.AlertEventEntity;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
@@ -51,6 +52,17 @@ class AddressAlertMatcherTest {
         AssetEventEntity event = new AssetEventEntity();
         event.setChain("ETH");
         event.setFromAddress("0x1f6A53F2a8eFd225071A13367E10616DCBd0EC76");
+
+        matcher.evaluate(event);
+
+        verifyNoInteractions(alertRuleRepository, alertEventRepository, ruleConditionParser);
+    }
+
+    @Test
+    void shouldIgnoreReorgedEvent() {
+        AssetEventEntity event = new AssetEventEntity();
+        ReflectionTestUtils.setField(event, "id", 999L);
+        event.setStatus(EventStatus.REORGED);
 
         matcher.evaluate(event);
 

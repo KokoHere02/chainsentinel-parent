@@ -42,6 +42,7 @@ public class EthereumScannerService implements ChainEventScanner {
 
 	private static final Logger log = LoggerFactory.getLogger(EthereumScannerService.class);
 	private static final int ETH_TRANSFER_LOG_INDEX = -1;
+	private static final String METRIC_EVENT_REORG_TOTAL = "event_reorg_total";
 	private static final Event ERC20_TRANSFER_EVENT = new Event("Transfer",
 		List.of(new TypeReference<Address>(true) {
 		}, new TypeReference<Address>(true) {
@@ -53,6 +54,7 @@ public class EthereumScannerService implements ChainEventScanner {
 	private final ScanCheckpointRepository scanCheckpointRepository;
 	private final AssetEventRepository assetEventRepository;
 	private final AddressAlertMatcher addressAlertMatcher;
+	private final ReorgAlertCleanupService reorgAlertCleanupService;
 	private final MeterRegistry meterRegistry;
 	private final AtomicLong scannerLagBlocks = new AtomicLong();
 	private final AtomicLong eventIngestTotal = new AtomicLong();
@@ -63,12 +65,14 @@ public class EthereumScannerService implements ChainEventScanner {
 		ScanCheckpointRepository scanCheckpointRepository,
 		AssetEventRepository assetEventRepository,
 		AddressAlertMatcher addressAlertMatcher,
+		ReorgAlertCleanupService reorgAlertCleanupService,
 		MeterRegistry meterRegistry
 	) {
 		this.scannerProperties = scannerProperties;
 		this.scanCheckpointRepository = scanCheckpointRepository;
 		this.assetEventRepository = assetEventRepository;
 		this.addressAlertMatcher = addressAlertMatcher;
+		this.reorgAlertCleanupService = reorgAlertCleanupService;
 		this.meterRegistry = meterRegistry;
 		meterRegistry.gauge("scanner_lag_blocks", scannerLagBlocks);
 		meterRegistry.gauge("event_duplicate_rate", this, s -> {
@@ -186,11 +190,18 @@ public class EthereumScannerService implements ChainEventScanner {
 				event.setStatus(EventStatus.REORGED);
 				event.setConfirmations(0);
 				changed.add(event);
+				meterRegistry.counter(METRIC_EVENT_REORG_TOTAL, "source", "scanner").increment();
 			}
 		}
 
 		if (!changed.isEmpty()) {
 			assetEventRepository.saveAll(changed);
+			reorgAlertCleanupService.cancelPendingAlertsForReorgedEvents(
+				changed.stream()
+					.map(AssetEventEntity::getId)
+					.filter(java.util.Objects::nonNull)
+					.toList()
+			);
 			log.warn("Reorg reconciled: chain={}-{}, fromBlock={}, toBlock={}, reorgedEvents={}",
 				runtime.chain(), runtime.network(), fromBlock, toBlock, changed.size());
 		}
