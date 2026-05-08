@@ -1,7 +1,9 @@
 package com.chainsentinel.web.api.support;
 
 import com.chainsentinel.core.exception.AppException;
+import com.chainsentinel.web.auth.AuthContext;
 import com.chainsentinel.web.auth.AuthException;
+import com.chainsentinel.web.auth.AuthPrincipal;
 import com.chainsentinel.web.auth.audit.AuditEvent;
 import com.chainsentinel.web.auth.audit.AuditEventPublisher;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,6 +12,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +35,7 @@ public class GlobalExceptionHandler {
 		this.auditEventPublisher = null;
 	}
 
+	@Autowired
 	public GlobalExceptionHandler(AuditEventPublisher auditEventPublisher) {
 		this.auditEventPublisher = auditEventPublisher;
 	}
@@ -166,7 +170,7 @@ public class GlobalExceptionHandler {
 		HttpServletRequest request,
 		List<String> details
 	) {
-		publishOrderCreateFailIfNeeded(status, message, request);
+		publishOrderCreateFailIfNeeded(status, code, message, request);
 		String requestId = readRequestId(request);
 		ApiErrorResponse body = ApiErrorResponse.of(
 			status.value(),
@@ -221,7 +225,7 @@ public class GlobalExceptionHandler {
 		return value == null ? "-" : String.valueOf(value);
 	}
 
-	private void publishOrderCreateFailIfNeeded(HttpStatus status, String message, HttpServletRequest request) {
+	private void publishOrderCreateFailIfNeeded(HttpStatus status, String code, String message, HttpServletRequest request) {
 		if (auditEventPublisher == null) {
 			return;
 		}
@@ -235,16 +239,29 @@ public class GlobalExceptionHandler {
 			return;
 		}
 		String traceId = readRequestId(request);
+		AuthPrincipal principal = AuthContext.get();
 		auditEventPublisher.publish(new AuditEvent(
 			"ORDER_CREATE_FAIL",
-			null,
-			null,
+			principal == null ? null : principal.userId(),
+			principal == null ? null : principal.username(),
 			"FAIL",
-			LogSanitizer.sanitizeMessage(message),
+			buildAuditReason(code, message),
 			traceId,
 			request.getRemoteAddr(),
 			request.getRequestURI(),
 			request.getMethod()
 		));
+	}
+
+	private String buildAuditReason(String code, String message) {
+		String sanitizedCode = LogSanitizer.sanitizeMessage(code);
+		String sanitizedMessage = LogSanitizer.sanitizeMessage(message);
+		if (sanitizedCode == null || sanitizedCode.isBlank()) {
+			return sanitizedMessage;
+		}
+		if (sanitizedMessage == null || sanitizedMessage.isBlank()) {
+			return "code=" + sanitizedCode;
+		}
+		return "code=" + sanitizedCode + ",message=" + sanitizedMessage;
 	}
 }

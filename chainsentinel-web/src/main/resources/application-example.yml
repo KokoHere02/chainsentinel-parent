@@ -21,13 +21,16 @@ chainsentinel:
   web:
     allowed-origins: http://localhost:5173
   auth:
-    jwt-secret: change-me-in-production
+    jwt-secret: your-long-random-jwt-secret
     access-token-ttl-seconds: 7200
     refresh-token-ttl-seconds: 604800
     login-fail-max-attempts: 5
     login-fail-window-seconds: 300
     login-lock-seconds: 600
     password-min-length: 10
+    bootstrap-admin-enabled: false
+    bootstrap-admin-username: ""
+    bootstrap-admin-password: ""
   debug:
     rule-test-match-enabled: true
   security:
@@ -35,6 +38,9 @@ chainsentinel:
       key-base64: ""
   scanner:
     enabled: true
+    scan-interval-ms: 10000
+    initial-delay-ms: 3000
+    startup-run-on-ready: true
     window-size: 2
     initial-start-block: 0
     reorg-lookback-blocks: 24
@@ -51,12 +57,24 @@ chainsentinel:
     retry-max: 5
     batch-size: 100
     dispatch-interval-ms: 10000
+  trade:
+    enabled: false
+    sandbox-only: true
+    max-order-quantity:
+    max-order-notional:
   price:
+    ingest:
+      enabled: true
+      interval-ms: 15000
+      initial-delay-ms: 5000
+      startup-run-on-ready: false
     tick:
       enabled: true
       queue-capacity: 20000
       batch-size: 200
       flush-interval-ms: 1000
+      high-watermark: 200
+      min-persist-change-ratio: 0.0
     tick-retention:
       enabled: true
       retention-days: 30

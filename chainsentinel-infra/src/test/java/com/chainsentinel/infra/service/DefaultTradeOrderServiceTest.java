@@ -3,12 +3,17 @@ package com.chainsentinel.infra.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.chainsentinel.common.crypto.AesGcmCryptoUtil;
+import com.chainsentinel.core.exception.CoreErrorCode;
+import com.chainsentinel.core.exception.TradeRiskException;
 import com.chainsentinel.core.service.dto.TradeFillView;
 import com.chainsentinel.core.service.dto.TradeOrderCreateCommand;
+import com.chainsentinel.infra.config.TradeProperties;
 import com.chainsentinel.infra.entity.TradeAccountEntity;
 import com.chainsentinel.infra.entity.TradeFillEntity;
 import com.chainsentinel.infra.entity.TradeOrderEntity;
@@ -38,6 +43,13 @@ class DefaultTradeOrderServiceTest {
 
 	@Mock
 	private TradeFillRepository tradeFillRepository;
+
+	private TradeProperties tradeProperties() {
+		TradeProperties properties = new TradeProperties();
+		properties.setEnabled(true);
+		properties.setSandboxOnly(true);
+		return properties;
+	}
 
 	@Test
 	void shouldCreateSubmittedOrder() {
@@ -74,6 +86,7 @@ class DefaultTradeOrderServiceTest {
 			tradeAccountRepository,
 			tradeFillRepository,
 			cryptoUtil,
+			tradeProperties(),
 			List.of(provider)
 		);
 		when(tradeAccountRepository.findById(1L)).thenReturn(Optional.of(account));
@@ -94,6 +107,7 @@ class DefaultTradeOrderServiceTest {
 			tradeAccountRepository,
 			tradeFillRepository,
 			AesGcmCryptoUtil.fromBase64Key(BASE64_KEY),
+			tradeProperties(),
 			List.of()
 		);
 
@@ -164,6 +178,7 @@ class DefaultTradeOrderServiceTest {
 			tradeAccountRepository,
 			tradeFillRepository,
 			cryptoUtil,
+			tradeProperties(),
 			List.of(provider)
 		);
 
@@ -187,6 +202,7 @@ class DefaultTradeOrderServiceTest {
 			tradeAccountRepository,
 			tradeFillRepository,
 			AesGcmCryptoUtil.fromBase64Key(BASE64_KEY),
+			tradeProperties(),
 			List.of()
 		);
 		TradeFillEntity fill = new TradeFillEntity();
@@ -208,6 +224,184 @@ class DefaultTradeOrderServiceTest {
 
 		assertEquals(1, result.size());
 		assertEquals("fill-1", result.get(0).providerFillId());
+	}
+
+	@Test
+	void shouldRejectCreateWhenTradeDisabled() {
+		TradeProperties properties = new TradeProperties();
+		properties.setEnabled(false);
+		DefaultTradeOrderService service = new DefaultTradeOrderService(
+			tradeOrderRepository,
+			tradeAccountRepository,
+			tradeFillRepository,
+			AesGcmCryptoUtil.fromBase64Key(BASE64_KEY),
+			properties,
+			List.of()
+		);
+
+		TradeRiskException ex = assertThrows(TradeRiskException.class, () -> service.create(new TradeOrderCreateCommand(
+			1L, "BTC-USDT", "BUY", "MARKET", null, new BigDecimal("0.01"), null, "c1"
+		), 1L));
+		assertEquals(CoreErrorCode.TRADE_DISABLED, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldRejectLiveAccountWhenSandboxOnlyEnabled() {
+		AesGcmCryptoUtil cryptoUtil = AesGcmCryptoUtil.fromBase64Key(BASE64_KEY);
+		TradeAccountEntity account = account(cryptoUtil);
+		ReflectionTestUtils.setField(account, "id", 1L);
+		account.setEnvType("LIVE");
+		DefaultTradeOrderService service = new DefaultTradeOrderService(
+			tradeOrderRepository,
+			tradeAccountRepository,
+			tradeFillRepository,
+			cryptoUtil,
+			tradeProperties(),
+			List.of()
+		);
+		when(tradeAccountRepository.findById(1L)).thenReturn(Optional.of(account));
+
+		TradeRiskException ex = assertThrows(TradeRiskException.class, () -> service.create(new TradeOrderCreateCommand(
+			1L, "BTC-USDT", "BUY", "MARKET", null, new BigDecimal("0.01"), null, "c1"
+		), 1L));
+		assertEquals(CoreErrorCode.TRADE_LIVE_DISABLED, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldRejectCreateWhenAccountSecretsMissing() {
+		AesGcmCryptoUtil cryptoUtil = AesGcmCryptoUtil.fromBase64Key(BASE64_KEY);
+		TradeAccountEntity account = account(cryptoUtil);
+		ReflectionTestUtils.setField(account, "id", 1L);
+		account.setApiSecretCipher(null);
+		DefaultTradeOrderService service = new DefaultTradeOrderService(
+			tradeOrderRepository,
+			tradeAccountRepository,
+			tradeFillRepository,
+			cryptoUtil,
+			tradeProperties(),
+			List.of()
+		);
+		when(tradeAccountRepository.findById(1L)).thenReturn(Optional.of(account));
+
+		TradeRiskException ex = assertThrows(TradeRiskException.class, () -> service.create(new TradeOrderCreateCommand(
+			1L, "BTC-USDT", "BUY", "MARKET", null, new BigDecimal("0.01"), null, "c1"
+		), 1L));
+		assertEquals(CoreErrorCode.TRADE_ACCOUNT_INVALID, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldRejectCreateWhenAccountDisabled() {
+		AesGcmCryptoUtil cryptoUtil = AesGcmCryptoUtil.fromBase64Key(BASE64_KEY);
+		TradeAccountEntity account = account(cryptoUtil);
+		ReflectionTestUtils.setField(account, "id", 1L);
+		account.setEnabled(false);
+		DefaultTradeOrderService service = new DefaultTradeOrderService(
+			tradeOrderRepository,
+			tradeAccountRepository,
+			tradeFillRepository,
+			cryptoUtil,
+			tradeProperties(),
+			List.of()
+		);
+		when(tradeAccountRepository.findById(1L)).thenReturn(Optional.of(account));
+
+		TradeRiskException ex = assertThrows(TradeRiskException.class, () -> service.create(new TradeOrderCreateCommand(
+			1L, "BTC-USDT", "BUY", "MARKET", null, new BigDecimal("0.01"), null, "c1"
+		), 1L));
+		assertEquals(CoreErrorCode.TRADE_ACCOUNT_DISABLED, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldRejectCreateWhenEnvTypeInvalid() {
+		AesGcmCryptoUtil cryptoUtil = AesGcmCryptoUtil.fromBase64Key(BASE64_KEY);
+		TradeAccountEntity account = account(cryptoUtil);
+		ReflectionTestUtils.setField(account, "id", 1L);
+		account.setEnvType("paper");
+		DefaultTradeOrderService service = new DefaultTradeOrderService(
+			tradeOrderRepository,
+			tradeAccountRepository,
+			tradeFillRepository,
+			cryptoUtil,
+			tradeProperties(),
+			List.of()
+		);
+		when(tradeAccountRepository.findById(1L)).thenReturn(Optional.of(account));
+
+		TradeRiskException ex = assertThrows(TradeRiskException.class, () -> service.create(new TradeOrderCreateCommand(
+			1L, "BTC-USDT", "BUY", "MARKET", null, new BigDecimal("0.01"), null, "c1"
+		), 1L));
+		assertEquals(CoreErrorCode.TRADE_ACCOUNT_INVALID, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldRejectCreateWhenQuantityExceedsLimit() {
+		AesGcmCryptoUtil cryptoUtil = AesGcmCryptoUtil.fromBase64Key(BASE64_KEY);
+		TradeAccountEntity account = account(cryptoUtil);
+		ReflectionTestUtils.setField(account, "id", 1L);
+		TradeProperties properties = tradeProperties();
+		properties.setMaxOrderQuantity(new BigDecimal("0.005"));
+		DefaultTradeOrderService service = new DefaultTradeOrderService(
+			tradeOrderRepository,
+			tradeAccountRepository,
+			tradeFillRepository,
+			cryptoUtil,
+			properties,
+			List.of()
+		);
+		when(tradeAccountRepository.findById(1L)).thenReturn(Optional.of(account));
+
+		TradeRiskException ex = assertThrows(TradeRiskException.class, () -> service.create(new TradeOrderCreateCommand(
+			1L, "BTC-USDT", "BUY", "MARKET", null, new BigDecimal("0.01"), null, "c1"
+		), 1L));
+		assertEquals(CoreErrorCode.TRADE_RISK_REJECTED, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldRejectCreateWhenNotionalExceedsLimit() {
+		AesGcmCryptoUtil cryptoUtil = AesGcmCryptoUtil.fromBase64Key(BASE64_KEY);
+		TradeAccountEntity account = account(cryptoUtil);
+		ReflectionTestUtils.setField(account, "id", 1L);
+		TradeProperties properties = tradeProperties();
+		properties.setMaxOrderNotional(new BigDecimal("500"));
+		DefaultTradeOrderService service = new DefaultTradeOrderService(
+			tradeOrderRepository,
+			tradeAccountRepository,
+			tradeFillRepository,
+			cryptoUtil,
+			properties,
+			List.of()
+		);
+		when(tradeAccountRepository.findById(1L)).thenReturn(Optional.of(account));
+
+		TradeRiskException ex = assertThrows(TradeRiskException.class, () -> service.create(new TradeOrderCreateCommand(
+			1L, "BTC-USDT", "BUY", "LIMIT", new BigDecimal("60000"), new BigDecimal("0.01"), null, "c1"
+		), 1L));
+		assertEquals(CoreErrorCode.TRADE_RISK_REJECTED, ex.getErrorCode());
+	}
+
+	@Test
+	void shouldRejectDuplicateClientOrderIdBeforeProviderSubmit() {
+		AesGcmCryptoUtil cryptoUtil = AesGcmCryptoUtil.fromBase64Key(BASE64_KEY);
+		TradeAccountEntity account = account(cryptoUtil);
+		ReflectionTestUtils.setField(account, "id", 1L);
+		TradeOrderProvider provider = mock(TradeOrderProvider.class);
+		when(provider.provider()).thenReturn("OKX");
+		DefaultTradeOrderService service = new DefaultTradeOrderService(
+			tradeOrderRepository,
+			tradeAccountRepository,
+			tradeFillRepository,
+			cryptoUtil,
+			tradeProperties(),
+			List.of(provider)
+		);
+		when(tradeAccountRepository.findById(1L)).thenReturn(Optional.of(account));
+		when(tradeOrderRepository.findByClientOrderId("c1")).thenReturn(Optional.of(new TradeOrderEntity()));
+
+		TradeRiskException ex = assertThrows(TradeRiskException.class, () -> service.create(new TradeOrderCreateCommand(
+			1L, "BTC-USDT", "BUY", "MARKET", null, new BigDecimal("0.01"), null, "c1"
+		), 1L));
+		assertEquals(CoreErrorCode.TRADE_ORDER_DUPLICATE, ex.getErrorCode());
+		verify(provider, never()).submit(any(), any(), any(), any());
 	}
 
 	private TradeAccountEntity account(AesGcmCryptoUtil cryptoUtil) {

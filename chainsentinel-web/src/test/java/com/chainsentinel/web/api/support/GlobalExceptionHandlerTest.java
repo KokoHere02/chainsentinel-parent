@@ -1,27 +1,47 @@
 package com.chainsentinel.web.api.support;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.chainsentinel.core.exception.NotFoundException;
+import com.chainsentinel.core.exception.CoreErrorCode;
+import com.chainsentinel.core.exception.TradeRiskException;
+import com.chainsentinel.web.auth.AuthContext;
+import com.chainsentinel.web.auth.AuthPrincipal;
+import com.chainsentinel.web.auth.AuthRole;
+import com.chainsentinel.web.auth.audit.AuditEvent;
+import com.chainsentinel.web.auth.audit.AuditEventPublisher;
+import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@ExtendWith(MockitoExtension.class)
 class GlobalExceptionHandlerTest {
+
+  @Mock
+  private AuditEventPublisher auditEventPublisher;
 
   private MockMvc mockMvc;
 
   @BeforeEach
   void setUp() {
     mockMvc = MockMvcBuilders
-      .standaloneSetup(new TestController())
-      .setControllerAdvice(new GlobalExceptionHandler())
+      .standaloneSetup(new TestController(), new OrderController())
+      .setControllerAdvice(new GlobalExceptionHandler(auditEventPublisher))
       .build();
   }
 
@@ -53,6 +73,29 @@ class GlobalExceptionHandlerTest {
       .andExpect(jsonPath("$.traceId").value("-"));
   }
 
+  @Test
+  void shouldPublishStableAuditReasonForOrderCreateFailure() throws Exception {
+    try {
+      AuthContext.set(new AuthPrincipal(7L, "admin", Set.of(AuthRole.ADMIN)));
+
+      mockMvc.perform(post("/api/orders"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("TRADE_DISABLED"));
+
+      ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+      verify(auditEventPublisher).publish(captor.capture());
+      org.junit.jupiter.api.Assertions.assertEquals("ORDER_CREATE_FAIL", captor.getValue().action());
+      org.junit.jupiter.api.Assertions.assertEquals(7L, captor.getValue().userId());
+      org.junit.jupiter.api.Assertions.assertEquals("admin", captor.getValue().username());
+      org.junit.jupiter.api.Assertions.assertEquals(
+        "code=TRADE_DISABLED,message=trade is disabled",
+        captor.getValue().reason()
+      );
+    } finally {
+      AuthContext.clear();
+    }
+  }
+
   @RestController
   @RequestMapping("/test")
   static class TestController {
@@ -70,6 +113,17 @@ class GlobalExceptionHandlerTest {
     @GetMapping("/crash")
     public String crash() {
       throw new RuntimeException("boom");
+    }
+
+  }
+
+  @RestController
+  @RequestMapping("/api/orders")
+  static class OrderController {
+
+    @PostMapping
+    public String createOrder() {
+      throw new TradeRiskException(CoreErrorCode.TRADE_DISABLED, "trade is disabled");
     }
   }
 }

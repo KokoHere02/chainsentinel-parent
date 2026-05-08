@@ -1,12 +1,15 @@
 package com.chainsentinel.infra.service;
 
 import com.chainsentinel.common.crypto.AesGcmCryptoUtil;
+import com.chainsentinel.core.exception.CoreErrorCode;
+import com.chainsentinel.core.exception.TradeRiskException;
 import com.chainsentinel.core.service.TradeOrderService;
 import com.chainsentinel.core.service.dto.TradeFillView;
 import com.chainsentinel.core.service.dto.TradeOrderCancelView;
 import com.chainsentinel.core.service.dto.TradeOrderCreateCommand;
 import com.chainsentinel.core.service.dto.TradeOrderQuery;
 import com.chainsentinel.core.service.dto.TradeOrderView;
+import com.chainsentinel.infra.config.TradeProperties;
 import com.chainsentinel.infra.entity.TradeAccountEntity;
 import com.chainsentinel.infra.entity.TradeFillEntity;
 import com.chainsentinel.infra.entity.TradeOrderEntity;
@@ -34,6 +37,7 @@ public class DefaultTradeOrderService implements TradeOrderService {
 	private final TradeAccountRepository tradeAccountRepository;
 	private final TradeFillRepository tradeFillRepository;
 	private final AesGcmCryptoUtil aesGcmCryptoUtil;
+	private final TradeProperties tradeProperties;
 	private final Map<String, TradeOrderProvider> providerMap;
 
 	public DefaultTradeOrderService(
@@ -41,12 +45,14 @@ public class DefaultTradeOrderService implements TradeOrderService {
 		TradeAccountRepository tradeAccountRepository,
 		TradeFillRepository tradeFillRepository,
 		AesGcmCryptoUtil aesGcmCryptoUtil,
+		TradeProperties tradeProperties,
 		List<TradeOrderProvider> providers
 	) {
 		this.tradeOrderRepository = tradeOrderRepository;
 		this.tradeAccountRepository = tradeAccountRepository;
 		this.tradeFillRepository = tradeFillRepository;
 		this.aesGcmCryptoUtil = aesGcmCryptoUtil;
+		this.tradeProperties = tradeProperties;
 		this.providerMap = providers.stream()
 			.collect(java.util.stream.Collectors.toMap(provider -> provider.provider().toUpperCase(Locale.ROOT), Function.identity()));
 	}
@@ -55,15 +61,18 @@ public class DefaultTradeOrderService implements TradeOrderService {
 	@Transactional
 	public TradeOrderView create(TradeOrderCreateCommand command, Long operatorUserId) {
 		validateCreateCommand(command);
+		enforceTradeSwitch();
 		TradeAccountEntity account = tradeAccountRepository.findById(command.accountId())
 			.orElseThrow(() -> new NoSuchElementException("trade account not found: " + command.accountId()));
-		if (!Boolean.TRUE.equals(account.getEnabled())) {
-			throw new IllegalArgumentException("trade account is disabled: " + account.getId());
-		}
+		validateTradingAccount(account);
+		enforceSandboxBoundary(account);
+		enforceOrderLimits(command);
+		String clientOrderId = normalizeClientOrderId(command.clientOrderId());
+		enforceClientOrderIdIdempotency(clientOrderId);
 		TradeOrderProvider provider = requireProvider(account.getProvider());
 		TradeOrderEntity entity = new TradeOrderEntity();
 		entity.setAccountId(account.getId());
-		entity.setClientOrderId(normalizeClientOrderId(command.clientOrderId()));
+		entity.setClientOrderId(clientOrderId);
 		entity.setProvider(account.getProvider());
 		entity.setMarketType("SPOT");
 		entity.setSymbol(command.symbol().trim().toUpperCase(Locale.ROOT));
@@ -204,6 +213,81 @@ public class DefaultTradeOrderService implements TradeOrderService {
 		if ("LIMIT".equalsIgnoreCase(command.orderType()) && (command.price() == null || command.price().compareTo(BigDecimal.ZERO) <= 0)) {
 			throw new IllegalArgumentException("price must be > 0 for limit order");
 		}
+	}
+
+	private void enforceTradeSwitch() {
+		if (!tradeProperties.isEnabled()) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_DISABLED, "trade is disabled");
+		}
+	}
+
+	private void validateTradingAccount(TradeAccountEntity account) {
+		if (!Boolean.TRUE.equals(account.getEnabled())) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_ACCOUNT_DISABLED,
+				"trade account is disabled: " + account.getId());
+		}
+		if (!StringUtils.hasText(account.getApiKey())) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_ACCOUNT_INVALID,
+				"trade account apiKey is required: " + account.getId());
+		}
+		if (!StringUtils.hasText(account.getApiSecretCipher())) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_ACCOUNT_INVALID,
+				"trade account apiSecret is required: " + account.getId());
+		}
+		if (!StringUtils.hasText(account.getPassphraseCipher())) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_ACCOUNT_INVALID,
+				"trade account passphrase is required: " + account.getId());
+		}
+		String envType = normalizeEnvType(account.getEnvType());
+		if (!"SIMULATED".equals(envType) && !"LIVE".equals(envType)) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_ACCOUNT_INVALID,
+				"unsupported trade account envType: " + account.getEnvType());
+		}
+	}
+
+	private void enforceSandboxBoundary(TradeAccountEntity account) {
+		if (tradeProperties.isSandboxOnly() && "LIVE".equals(normalizeEnvType(account.getEnvType()))) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_LIVE_DISABLED,
+				"live trading is disabled in sandbox-only mode");
+		}
+	}
+
+	private void enforceOrderLimits(TradeOrderCreateCommand command) {
+		BigDecimal maxOrderQuantity = tradeProperties.getMaxOrderQuantity();
+		if (maxOrderQuantity != null && maxOrderQuantity.compareTo(BigDecimal.ZERO) > 0
+			&& command.quantity().compareTo(maxOrderQuantity) > 0) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_RISK_REJECTED, "order quantity exceeds max limit");
+		}
+
+		BigDecimal maxOrderNotional = tradeProperties.getMaxOrderNotional();
+		BigDecimal notional = resolveOrderNotional(command);
+		if (maxOrderNotional != null && maxOrderNotional.compareTo(BigDecimal.ZERO) > 0
+			&& notional != null && notional.compareTo(maxOrderNotional) > 0) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_RISK_REJECTED, "order notional exceeds max limit");
+		}
+	}
+
+	private void enforceClientOrderIdIdempotency(String clientOrderId) {
+		if (!StringUtils.hasText(clientOrderId)) {
+			return;
+		}
+		if (tradeOrderRepository.findByClientOrderId(clientOrderId).isPresent()) {
+			throw new TradeRiskException(CoreErrorCode.TRADE_ORDER_DUPLICATE, "clientOrderId already exists: " + clientOrderId);
+		}
+	}
+
+	private BigDecimal resolveOrderNotional(TradeOrderCreateCommand command) {
+		if (command.quoteAmount() != null && command.quoteAmount().compareTo(BigDecimal.ZERO) > 0) {
+			return command.quoteAmount();
+		}
+		if (command.price() != null && command.price().compareTo(BigDecimal.ZERO) > 0) {
+			return command.price().multiply(command.quantity());
+		}
+		return null;
+	}
+
+	private String normalizeEnvType(String envType) {
+		return StringUtils.hasText(envType) ? envType.trim().toUpperCase(Locale.ROOT) : "";
 	}
 
 	private TradeOrderProvider requireProvider(String providerName) {

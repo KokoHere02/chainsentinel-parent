@@ -6,10 +6,14 @@ import com.chainsentinel.core.service.dto.TradeOrderCancelView;
 import com.chainsentinel.core.service.dto.TradeOrderCreateCommand;
 import com.chainsentinel.core.service.dto.TradeOrderQuery;
 import com.chainsentinel.core.service.dto.TradeOrderView;
+import com.chainsentinel.web.api.support.RequestTraceFilter;
 import com.chainsentinel.web.auth.AuthContext;
 import com.chainsentinel.web.auth.AuthPrincipal;
 import com.chainsentinel.web.auth.AuthRole;
 import com.chainsentinel.web.auth.RequireRoles;
+import com.chainsentinel.web.auth.audit.AuditEvent;
+import com.chainsentinel.web.auth.audit.AuditEventPublisher;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -17,6 +21,7 @@ import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.NoSuchElementException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -34,15 +39,24 @@ import org.springframework.web.server.ResponseStatusException;
 public class OrderController {
 
 	private final TradeOrderService tradeOrderService;
+	private final AuditEventPublisher auditEventPublisher;
 
 	public OrderController(TradeOrderService tradeOrderService) {
+		this(tradeOrderService, null);
+	}
+
+	@Autowired
+	public OrderController(TradeOrderService tradeOrderService, AuditEventPublisher auditEventPublisher) {
 		this.tradeOrderService = tradeOrderService;
+		this.auditEventPublisher = auditEventPublisher;
 	}
 
 	@PostMapping
 	@RequireRoles({ AuthRole.ADMIN, AuthRole.TRADER })
-	public TradeOrderView create(@RequestBody @Valid OrderCreateRequest request) {
-		return tradeOrderService.create(toCreateCommand(request), currentUserId());
+	public TradeOrderView create(@RequestBody @Valid OrderCreateRequest request, HttpServletRequest httpRequest) {
+		TradeOrderView view = tradeOrderService.create(toCreateCommand(request), currentUserId());
+		publishCreateSuccessIfNeeded(view, httpRequest);
+		return view;
 	}
 
 	@PostMapping("/{id}/cancel")
@@ -115,6 +129,40 @@ public class OrderController {
 	private Long currentUserId() {
 		AuthPrincipal principal = AuthContext.get();
 		return principal == null ? null : principal.userId();
+	}
+
+	private String currentUsername() {
+		AuthPrincipal principal = AuthContext.get();
+		return principal == null ? null : principal.username();
+	}
+
+	private void publishCreateSuccessIfNeeded(TradeOrderView view, HttpServletRequest request) {
+		if (auditEventPublisher == null || view == null) {
+			return;
+		}
+		auditEventPublisher.publish(new AuditEvent(
+			"ORDER_CREATE_SUCCESS",
+			currentUserId(),
+			currentUsername(),
+			"SUCCESS",
+			buildCreateSuccessReason(view),
+			traceId(request),
+			request.getRemoteAddr(),
+			request.getRequestURI(),
+			request.getMethod()
+		));
+	}
+
+	private String buildCreateSuccessReason(TradeOrderView view) {
+		return "accountId=" + view.accountId()
+			+ ",orderId=" + view.id()
+			+ ",symbol=" + view.symbol()
+			+ ",status=" + view.status();
+	}
+
+	private String traceId(HttpServletRequest request) {
+		Object value = request.getAttribute(RequestTraceFilter.REQUEST_ATTR_REQUEST_ID);
+		return value == null ? "-" : String.valueOf(value);
 	}
 
 	public record OrderCreateRequest(

@@ -16,6 +16,14 @@ management:
     health:
       probes:
         enabled: true
+      show-components: always
+  health:
+    defaults:
+      enabled: true
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
 
 logging:
   pattern:
@@ -25,13 +33,21 @@ chainsentinel:
   debug:
     rule-test-match-enabled: false
   auth:
-    jwt-secret: ${CHAINSENTINEL_AUTH_JWT_SECRET:change-me-in-production}
+    jwt-secret: ${CHAINSENTINEL_AUTH_JWT_SECRET:}
     access-token-ttl-seconds: ${CHAINSENTINEL_AUTH_ACCESS_TOKEN_TTL_SECONDS:7200}
     refresh-token-ttl-seconds: ${CHAINSENTINEL_AUTH_REFRESH_TOKEN_TTL_SECONDS:604800}
     login-fail-max-attempts: ${CHAINSENTINEL_AUTH_LOGIN_FAIL_MAX_ATTEMPTS:5}
     login-fail-window-seconds: ${CHAINSENTINEL_AUTH_LOGIN_FAIL_WINDOW_SECONDS:300}
     login-lock-seconds: ${CHAINSENTINEL_AUTH_LOGIN_LOCK_SECONDS:600}
     password-min-length: ${CHAINSENTINEL_AUTH_PASSWORD_MIN_LENGTH:10}
+    bootstrap-admin-enabled: ${CHAINSENTINEL_AUTH_BOOTSTRAP_ADMIN_ENABLED:false}
+    bootstrap-admin-username: ${CHAINSENTINEL_AUTH_BOOTSTRAP_ADMIN_USERNAME:}
+    bootstrap-admin-password: ""
   web:
     allowed-origins: ${WEB_ALLOWED_ORIGINS:http://localhost:5173}
+  trade:
+    enabled: ${CHAINSENTINEL_TRADE_ENABLED:false}
+    sandbox-only: ${CHAINSENTINEL_TRADE_SANDBOX_ONLY:true}
+    max-order-quantity: ${CHAINSENTINEL_TRADE_MAX_ORDER_QUANTITY:}
+    max-order-notional: ${CHAINSENTINEL_TRADE_MAX_ORDER_NOTIONAL:}
 
