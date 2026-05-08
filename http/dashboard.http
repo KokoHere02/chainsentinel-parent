@@ -1,0 +1,43 @@
+### Base
+@host = http://localhost:8080
+
+### Time range examples (UTC ms)
+### 2026-04-25T00:00:00Z
+@from = 1777075200000
+### 2026-04-26T00:00:00Z
+@to = 1777161600000
+
+### Common params
+@instId = BTC-USDT
+@bucketMs = 60000
+@bucketSec = 3600
+
+### 1) Overview cards
+GET {{host}}/api/dashboard/overview
+
+### 2) Price summary (window supports: 15m / 24h / 7d)
+GET {{host}}/api/dashboard/price/summary?window=24h&limit=20
+
+### 3) Price trend (candles/line source)
+GET {{host}}/api/dashboard/price/trend?instId={{instId}}&from={{from}}&to={{to}}&bucketMs={{bucketMs}}&limit=2000
+
+### 4) Backfill summary
+GET {{host}}/api/dashboard/backfill/summary?from={{from}}&to={{to}}
+
+### 5) Backfill task list (status optional: QUEUED/RUNNING/SUCCEEDED/FAILED)
+GET {{host}}/api/dashboard/backfill/tasks?page=0&size=20&status=RUNNING&instId={{instId}}
+
+### 6) Alert summary (trend + severity + top rules)
+GET {{host}}/api/dashboard/alerts/summary?from={{from}}&to={{to}}&bucketSec={{bucketSec}}&topRules=10
+
+### 7) Recent alerts
+GET {{host}}/api/dashboard/alerts/recent?limit=50
+
+### 8) Health (ws providers + recent error signal)
+GET {{host}}/api/dashboard/health
+
+### 9) Solana SPL refresh failure top
+GET {{host}}/api/dashboard/solana/spl-failures?from={{from}}&to={{to}}&top=20
+
+### 10) Monitoring tree for dashboard table/sidebar
+GET {{host}}/api/dashboard/monitoring/tree?enabledOnly=true&limit=200

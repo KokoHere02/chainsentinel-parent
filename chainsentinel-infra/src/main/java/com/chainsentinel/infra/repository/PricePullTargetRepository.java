@@ -44,13 +44,20 @@ public interface PricePullTargetRepository extends JpaRepository<PricePullTarget
 		""")
 	long countDistinctInstIdByEnabledTrue();
 
-	@Query("""
-		select distinct t.instId
-		from PricePullTargetEntity t
-		where t.enabled = true
-		  and t.instId is not null
-		  and trim(t.instId) <> ''
-		order by t.priority asc, t.id asc
-		""")
-	List<String> findDistinctEnabledInstIds(Pageable pageable);
+	@Query(value = """
+		select x.inst_id
+		from (
+			select t.inst_id as inst_id,
+			       min(t.priority) as min_priority,
+			       min(t.id) as min_target_id
+			from price_pull_target t
+			where t.enabled = b'1'
+			  and t.inst_id is not null
+			  and trim(t.inst_id) <> ''
+			group by t.inst_id
+		) x
+		order by x.min_priority asc, x.min_target_id asc
+		limit :limit
+		""", nativeQuery = true)
+	List<String> findDistinctEnabledInstIds(@Param("limit") int limit);
 }

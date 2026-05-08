@@ -1,0 +1,9 @@
+### 盘口深度
+GET http://localhost:8080/api/prices/market/depth?instId=BTC-USDT&depth=20
+
+### 最近公共成交
+GET http://localhost:8080/api/prices/market/trades?instId=BTC-USDT&limit=20
+
+### 前端 WebSocket 订阅示例
+# ws://localhost:8080/ws/price-market
+# {"op":"subscribe","instId":"BTC-USDT","depth":20,"channels":["depth","trades"]}

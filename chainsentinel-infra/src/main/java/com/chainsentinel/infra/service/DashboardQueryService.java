@@ -4,16 +4,14 @@ import com.chainsentinel.core.service.MonitorTreeQueryService;
 import com.chainsentinel.core.service.dto.MonitorAddressTreeView;
 import com.chainsentinel.infra.entity.AlertEventEntity;
 import com.chainsentinel.infra.entity.AlertRuleEntity;
-import com.chainsentinel.infra.entity.PricePullTargetEntity;
-import com.chainsentinel.infra.entity.PriceTickEntity;
+import com.chainsentinel.infra.entity.AssetPriceSnapshotEntity;
 import com.chainsentinel.infra.repository.AlertEventRepository;
 import com.chainsentinel.infra.repository.AlertEventRepository.AlertRuleCountRow;
-import com.chainsentinel.infra.repository.AlertEventRepository.AlertSeverityRow;
 import com.chainsentinel.infra.repository.AlertRuleRepository;
+import com.chainsentinel.infra.repository.AssetPriceSnapshotRepository;
 import com.chainsentinel.infra.repository.MonitorAddressRepository;
 import com.chainsentinel.infra.repository.PricePullTargetRepository;
 import com.chainsentinel.infra.repository.PriceTickRepository;
-import com.chainsentinel.infra.repository.PriceTickRepository.PriceSummaryRow;
 import com.chainsentinel.infra.repository.PriceTickRepository.PriceTickAggregateRow;
 import com.chainsentinel.price.stream.PriceStreamProviderStatus;
 import com.chainsentinel.price.stream.PriceStreamStatusService;
@@ -41,6 +39,7 @@ public class DashboardQueryService {
 	private final AlertRuleRepository alertRuleRepository;
 	private final AlertEventRepository alertEventRepository;
 	private final PricePullTargetRepository pricePullTargetRepository;
+	private final AssetPriceSnapshotRepository assetPriceSnapshotRepository;
 	private final PriceTickRepository priceTickRepository;
 	private final OkxBackfillAsyncTaskService okxBackfillAsyncTaskService;
 	private final DbPriceTickBatchWriter dbPriceTickBatchWriter;
@@ -53,6 +52,7 @@ public class DashboardQueryService {
 		AlertRuleRepository alertRuleRepository,
 		AlertEventRepository alertEventRepository,
 		PricePullTargetRepository pricePullTargetRepository,
+		AssetPriceSnapshotRepository assetPriceSnapshotRepository,
 		PriceTickRepository priceTickRepository,
 		OkxBackfillAsyncTaskService okxBackfillAsyncTaskService,
 		DbPriceTickBatchWriter dbPriceTickBatchWriter,
@@ -64,6 +64,7 @@ public class DashboardQueryService {
 		this.alertRuleRepository = alertRuleRepository;
 		this.alertEventRepository = alertEventRepository;
 		this.pricePullTargetRepository = pricePullTargetRepository;
+		this.assetPriceSnapshotRepository = assetPriceSnapshotRepository;
 		this.priceTickRepository = priceTickRepository;
 		this.okxBackfillAsyncTaskService = okxBackfillAsyncTaskService;
 		this.dbPriceTickBatchWriter = dbPriceTickBatchWriter;
@@ -94,22 +95,39 @@ public class DashboardQueryService {
 	}
 
 	public List<PriceSummaryView> priceSummary(Duration window, int limit) {
-		long windowMs = Math.max(1L, window.toMillis());
 		int safeLimit = Math.max(1, Math.min(500, limit));
-		List<PriceSummaryRow> rows = priceTickRepository.queryLatestPriceSummaries(DEFAULT_PROVIDER, windowMs, safeLimit);
-		List<PriceSummaryView> result = new ArrayList<>(rows.size());
-		for (PriceSummaryRow row : rows) {
-			if (row == null || row.getLatestPrice() == null || row.getLatestQuoteTs() == null) {
+		List<String> enabledInstIds = pricePullTargetRepository.findDistinctEnabledInstIds(safeLimit);
+		if (enabledInstIds.isEmpty()) {
+			return List.of();
+		}
+		List<AssetPriceSnapshotEntity> latestSnapshots = assetPriceSnapshotRepository
+			.findLatestByInstIdIn(enabledInstIds);
+		Map<String, AssetPriceSnapshotEntity> latestByInstId = latestSnapshots.stream()
+			.filter(snapshot -> snapshot != null && StringUtils.hasText(snapshot.getInstId()))
+			.collect(Collectors.toMap(
+				snapshot -> snapshot.getInstId().trim().toUpperCase(java.util.Locale.ROOT),
+				snapshot -> snapshot,
+				(left, right) -> left
+			));
+		List<PriceSummaryView> result = new ArrayList<>(enabledInstIds.size());
+		for (String instId : enabledInstIds) {
+			if (!StringUtils.hasText(instId)) {
 				continue;
 			}
-			BigDecimal baselinePrice = row.getBaselinePrice() == null ? row.getLatestPrice() : row.getBaselinePrice();
-			BigDecimal changePct = calculateChangePercent(row.getLatestPrice(), baselinePrice);
+			String normalizedInstId = instId.trim().toUpperCase(java.util.Locale.ROOT);
+			AssetPriceSnapshotEntity latestSnapshot = latestByInstId.get(normalizedInstId);
+			if (latestSnapshot == null || latestSnapshot.getPrice() == null || latestSnapshot.getBucketTs() == null) {
+				continue;
+			}
+			BigDecimal latestPrice = latestSnapshot.getPrice();
+			BigDecimal baselinePrice = resolveBaselinePrice(latestSnapshot, window);
+			BigDecimal changePct = calculateChangePercent(latestPrice, baselinePrice);
 			result.add(new PriceSummaryView(
-				row.getInstId(),
-				row.getLatestPrice(),
+				normalizedInstId,
+				latestPrice,
 				baselinePrice,
 				changePct,
-				row.getLatestQuoteTs()
+				latestSnapshot.getQuotedAt() == null ? null : latestSnapshot.getQuotedAt().atZone(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
 			));
 		}
 		return result;
@@ -257,6 +275,21 @@ public class DashboardQueryService {
 		return alertEventRepository.countTrendByBucketBetween(fromAt, toAt, bucketSec).stream()
 			.map(row -> new AlertTrendPointView(row.getBucketStartTs(), row.getTotal()))
 			.toList();
+	}
+
+	private BigDecimal resolveBaselinePrice(AssetPriceSnapshotEntity latestSnapshot, Duration window) {
+		if (latestSnapshot == null || latestSnapshot.getBucketTs() == null) {
+			return BigDecimal.ZERO;
+		}
+		java.time.LocalDateTime cutoff = latestSnapshot.getBucketTs().minus(window);
+		return assetPriceSnapshotRepository
+			.findTopByProviderNameAndInstIdAndBucketTsGreaterThanEqualOrderByBucketTsAsc(
+				latestSnapshot.getProviderName(),
+				latestSnapshot.getInstId(),
+				cutoff
+			)
+			.map(AssetPriceSnapshotEntity::getPrice)
+			.orElse(latestSnapshot.getPrice());
 	}
 
 	public record OverviewView(

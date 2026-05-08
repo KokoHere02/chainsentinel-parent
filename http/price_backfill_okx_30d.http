@@ -2,7 +2,7 @@
 @host = http://localhost:8080
 
 ### 最近30天（UTC毫秒时间戳）
-@fromTs = 1773812471564
+@fromTs = 1745300471564
 @toTs = 1776404471564
 
 ### 1) 触发 OKX 历史补数（BTC-USDT, 1m）
@@ -10,12 +10,12 @@ POST {{host}}/api/internal/price-ticks/backfill/okx
 Content-Type: application/json
 
 {
-  "instId": "ETH-USDT",
-  "fromTs": 1773812471564,
+  "instId": "BTC-USDT",
+  "fromTs": 1745300471564,
   "toTs": 1776404471564,
   "bar": "1m",
   "pageLimit": 300,
-  "maxRounds": 120,
+  "maxRounds": 1000,
   "sleepMs": 50
 }
 
