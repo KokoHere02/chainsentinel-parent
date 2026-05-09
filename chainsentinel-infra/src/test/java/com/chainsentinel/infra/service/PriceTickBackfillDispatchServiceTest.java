@@ -301,6 +301,43 @@ class PriceTickBackfillDispatchServiceTest {
 			meterRegistry.get("price_tick_backfill_failure_total")
 				.tags("trigger", "daily", "phase", "run", "reason", "inst_running")
 				.counter().count());
+		assertEquals(0.0, meterRegistry.get("price_tick_backfill_success_rate").gauge().value());
+	}
+
+	@Test
+	void shouldExposeBackfillSuccessRateGauge() {
+		SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
+		PriceTickBackfillDispatchService service = new PriceTickBackfillDispatchService(
+			okxPriceTickBackfillService,
+			Runnable::run,
+			meterRegistry,
+			defaultProperties()
+		);
+		when(okxPriceTickBackfillService.backfill(
+			eq("BTC-USDT"),
+			anyLong(),
+			anyLong(),
+			eq("1m"),
+			anyInt(),
+			anyInt(),
+			anyLong()
+		)).thenReturn(new OkxPriceTickBackfillService.BackfillResult(
+			"BTC-USDT", 0L, 0L, "1m", 1, 0, 0, false, "ok", null, null, null, Instant.now(), Instant.now()
+		));
+		when(okxPriceTickBackfillService.backfill(
+			eq("ETH-USDT"),
+			anyLong(),
+			anyLong(),
+			eq("1m"),
+			anyInt(),
+			anyInt(),
+			anyLong()
+		)).thenThrow(new IllegalStateException("backfill already running"));
+
+		service.submitLast30Days("BTC-USDT", "daily");
+		service.submitLast30Days("ETH-USDT", "daily");
+
+		assertEquals(0.5, meterRegistry.get("price_tick_backfill_success_rate").gauge().value());
 	}
 
 	private PriceTickBackfillProperties defaultProperties() {

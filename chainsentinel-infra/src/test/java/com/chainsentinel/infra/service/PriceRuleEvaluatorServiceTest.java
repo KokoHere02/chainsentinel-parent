@@ -376,6 +376,31 @@ class PriceRuleEvaluatorServiceTest {
 		assertEquals(true, stateRef.get().getActive());
 	}
 
+	@Test
+	void shouldRecordRuleEvalBatchSizeAndDurationMetrics() throws Exception {
+		AlertRuleEntity rule = new AlertRuleEntity();
+		ReflectionTestUtils.setField(rule, "id", 31L);
+		rule.setType(AlertRuleType.PRICE_THRESHOLD);
+		rule.setSeverity("HIGH");
+		rule.setConditionJson(buildPriceRuleJson("BTC-USDT", "100"));
+		when(alertRuleRepository.findByTypeAndEnabledTrue(AlertRuleType.PRICE_THRESHOLD)).thenReturn(List.of(rule));
+
+		AssetPriceSnapshotEntity snapshot = new AssetPriceSnapshotEntity();
+		snapshot.setInstId("BTC-USDT");
+		snapshot.setPrice(new BigDecimal("120"));
+		when(assetPriceSnapshotRepository.findLatestByInstIdIn(List.of("BTC-USDT"))).thenReturn(List.of(snapshot));
+		when(ruleTriggerStateRepository.findByRuleIdInAndTargetKeyIn(List.of(31L), List.of("BTC-USDT")))
+			.thenReturn(List.of());
+		when(ruleTriggerStateRepository.save(any(RuleTriggerStateEntity.class)))
+			.thenAnswer(invocation -> invocation.getArgument(0));
+
+		service.evaluateOnce();
+
+		assertEquals(1L, meterRegistry.get("rule_eval_batch_size").summary().count());
+		assertEquals(1.0, meterRegistry.get("rule_eval_batch_size").summary().totalAmount());
+		assertEquals(1L, meterRegistry.get("rule_eval_duration").timer().count());
+	}
+
 	private String buildPriceRuleJson(String symbol, String threshold, Integer cooldownSec) throws Exception {
 		PriceRuleCondition condition = new PriceRuleCondition();
 		condition.setSymbol(symbol);
