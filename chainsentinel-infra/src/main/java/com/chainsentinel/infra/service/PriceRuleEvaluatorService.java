@@ -19,7 +19,9 @@ import com.chainsentinel.infra.repository.AlertRuleRepository;
 import com.chainsentinel.infra.repository.AssetPriceSnapshotRepository;
 import com.chainsentinel.infra.repository.RuleTriggerStateRepository;
 import com.chainsentinel.infra.rule.RuleConditionJsonParser;
+import io.micrometer.core.instrument.DistributionSummary;
 import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,6 +36,8 @@ public class PriceRuleEvaluatorService {
 	private static final String SEND_STATUS_PENDING = "PENDING";
 	private static final String METRIC_RULE_EVAL_FAIL_TOTAL = "rule_eval_fail_total";
 	private static final String METRIC_RULE_COOLDOWN_BLOCK_TOTAL = "rule_cooldown_block_total";
+	private static final String METRIC_RULE_EVAL_BATCH_SIZE = "rule_eval_batch_size";
+	private static final String METRIC_RULE_EVAL_DURATION = "rule_eval_duration";
 
 	private final AlertRuleRepository alertRuleRepository;
 	private final AlertEventRepository alertEventRepository;
@@ -41,6 +45,7 @@ public class PriceRuleEvaluatorService {
 	private final RuleTriggerStateRepository ruleTriggerStateRepository;
 	private final RuleConditionJsonParser ruleConditionJsonParser;
 	private final MeterRegistry meterRegistry;
+	private final DistributionSummary ruleEvalBatchSizeSummary;
 
 	public PriceRuleEvaluatorService(
 		AlertRuleRepository alertRuleRepository,
@@ -56,44 +61,52 @@ public class PriceRuleEvaluatorService {
 		this.ruleTriggerStateRepository = ruleTriggerStateRepository;
 		this.ruleConditionJsonParser = ruleConditionJsonParser;
 		this.meterRegistry = meterRegistry;
+		this.ruleEvalBatchSizeSummary = DistributionSummary.builder(METRIC_RULE_EVAL_BATCH_SIZE)
+			.register(meterRegistry);
 	}
 
 	@Transactional
 	public int evaluateOnce() {
-		List<AlertRuleEntity> rules = alertRuleRepository.findByTypeAndEnabledTrue(AlertRuleType.PRICE_THRESHOLD);
-		List<PreparedPriceRule> preparedRules = new java.util.ArrayList<>(rules.size());
-		for (AlertRuleEntity rule : rules) {
-			try {
-				preparedRules.add(prepareRule(rule));
-			} catch (IllegalArgumentException ex) {
-				recordRuleEvalFail(rule, "invalid");
-				log.warn("rule.eval.invalid ruleId={} type={} error={} conditionJson={}",
-					rule.getId(),
-					rule.getType(),
-					ex.getMessage(),
-					trimJson(rule.getConditionJson()));
-			}
-		}
-		Map<String, AssetPriceSnapshotEntity> latestSnapshotByTargetKey = loadLatestSnapshots(preparedRules);
-		Map<String, RuleTriggerStateEntity> stateByRuleAndTarget = loadStates(preparedRules);
-		int created = 0;
-		for (PreparedPriceRule preparedRule : preparedRules) {
-			try {
-				if (evaluateOneRule(preparedRule, latestSnapshotByTargetKey, stateByRuleAndTarget)) {
-					created++;
+		Timer.Sample sample = Timer.start(meterRegistry);
+		try {
+			List<AlertRuleEntity> rules = alertRuleRepository.findByTypeAndEnabledTrue(AlertRuleType.PRICE_THRESHOLD);
+			ruleEvalBatchSizeSummary.record(rules.size());
+			List<PreparedPriceRule> preparedRules = new java.util.ArrayList<>(rules.size());
+			for (AlertRuleEntity rule : rules) {
+				try {
+					preparedRules.add(prepareRule(rule));
+				} catch (IllegalArgumentException ex) {
+					recordRuleEvalFail(rule, "invalid");
+					log.warn("rule.eval.invalid ruleId={} type={} error={} conditionJson={}",
+						rule.getId(),
+						rule.getType(),
+						ex.getMessage(),
+						trimJson(rule.getConditionJson()));
 				}
-			} catch (Exception ex) {
-				AlertRuleEntity rule = preparedRule.rule();
-				recordRuleEvalFail(rule, "error");
-				log.error("rule.eval.error ruleId={} type={} error={} conditionJson={}",
-					rule.getId(),
-					rule.getType(),
-					ex.getMessage(),
-					trimJson(rule.getConditionJson()),
-					ex);
 			}
+			Map<String, AssetPriceSnapshotEntity> latestSnapshotByTargetKey = loadLatestSnapshots(preparedRules);
+			Map<String, RuleTriggerStateEntity> stateByRuleAndTarget = loadStates(preparedRules);
+			int created = 0;
+			for (PreparedPriceRule preparedRule : preparedRules) {
+				try {
+					if (evaluateOneRule(preparedRule, latestSnapshotByTargetKey, stateByRuleAndTarget)) {
+						created++;
+					}
+				} catch (Exception ex) {
+					AlertRuleEntity rule = preparedRule.rule();
+					recordRuleEvalFail(rule, "error");
+					log.error("rule.eval.error ruleId={} type={} error={} conditionJson={}",
+						rule.getId(),
+						rule.getType(),
+						ex.getMessage(),
+						trimJson(rule.getConditionJson()),
+						ex);
+				}
+			}
+			return created;
+		} finally {
+			sample.stop(meterRegistry.timer(METRIC_RULE_EVAL_DURATION));
 		}
-		return created;
 	}
 
 	private PreparedPriceRule prepareRule(AlertRuleEntity rule) {

@@ -47,6 +47,8 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	private static final String METRIC_WS_SUBSCRIBE_TOTAL = "price_ws_subscribe_total";
 	private static final String METRIC_WS_RECONNECT_TOTAL = "price_ws_reconnect_total";
 	private static final String METRIC_WS_KEEPALIVE_TOTAL = "price_ws_keepalive_total";
+	private static final String METRIC_WS_DISCONNECT_TOTAL = "price_ws_disconnect_total";
+	private static final String METRIC_WS_RECOVERY_DURATION = "price_ws_recovery_duration";
 	private static final String METRIC_WS_FIRST_QUOTE_TIMEOUT_TOTAL = "price_ws_first_quote_timeout_total";
 	private static final String METRIC_WS_QUOTE_DROPPED_TOTAL = "price_ws_quote_dropped_total";
 	private static final long DEFAULT_QUOTE_SHORT_WINDOW_MS = 2000L;
@@ -74,6 +76,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 	private final AtomicLong lastErrorAtMs = new AtomicLong(0L);
 	private final AtomicLong lastResubscribeAtMs = new AtomicLong(0L);
 	private final AtomicInteger lastResubscribeCount = new AtomicInteger(0);
+	private final AtomicLong lastDisconnectedAtMs = new AtomicLong(0L);
 	private volatile String lastReconnectReason;
 	private volatile String lastErrorType;
 	private volatile String lastErrorMessage;
@@ -147,6 +150,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 				reconnectScheduled.set(false);
 				reconnectAttempts.set(0);
 				lastMessageAt.set(System.currentTimeMillis());
+				recordRecoveryDurationIfNeeded();
 				log.info("price.ws.okx.connected url={}", url);
 				incrementMessageCounter("connected");
 				startKeepalive();
@@ -200,6 +204,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 			@Override
 			public void onClose(int statusCode, String reason) {
 				stopKeepalive();
+				markDisconnected("closed");
 				log.warn("price.ws.okx.closed status={} reason={}", statusCode, reason);
 				incrementMessageCounter("closed");
 				scheduleReconnect("closed");
@@ -208,6 +213,7 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 			@Override
 			public void onError(Throwable error) {
 				stopKeepalive();
+				markDisconnected("error");
 				String type = error == null ? "unknown" : error.getClass().getSimpleName();
 				String message = error == null ? "unknown" : error.getMessage();
 				lastErrorType = type;
@@ -452,6 +458,21 @@ public class OkxWsPriceStreamProvider implements PriceStreamProvider, PriceStrea
 
 	private void incrementKeepaliveCounter(String action) {
 		meterRegistry.counter(METRIC_WS_KEEPALIVE_TOTAL, "provider", PROVIDER_NAME, "action", action).increment();
+	}
+
+	private void markDisconnected(String type) {
+		lastDisconnectedAtMs.compareAndSet(0L, System.currentTimeMillis());
+		meterRegistry.counter(METRIC_WS_DISCONNECT_TOTAL, "provider", PROVIDER_NAME, "type", type).increment();
+	}
+
+	private void recordRecoveryDurationIfNeeded() {
+		long disconnectedAtMs = lastDisconnectedAtMs.getAndSet(0L);
+		if (disconnectedAtMs <= 0L) {
+			return;
+		}
+		long recoveryMs = Math.max(0L, System.currentTimeMillis() - disconnectedAtMs);
+		meterRegistry.timer(METRIC_WS_RECOVERY_DURATION, "provider", PROVIDER_NAME)
+			.record(recoveryMs, TimeUnit.MILLISECONDS);
 	}
 
 	private boolean acceptQuote(PriceStreamQuote quote) {

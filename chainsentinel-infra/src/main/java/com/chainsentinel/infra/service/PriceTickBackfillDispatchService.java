@@ -1,6 +1,7 @@
 package com.chainsentinel.infra.service;
 
 import com.chainsentinel.infra.config.PriceTickBackfillProperties;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
@@ -12,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -31,6 +33,7 @@ public class PriceTickBackfillDispatchService {
 	private static final String METRIC_BACKFILL_DISPATCH_TOTAL = "price_tick_backfill_dispatch_total";
 	private static final String METRIC_BACKFILL_DURATION = "price_tick_backfill_duration";
 	private static final String METRIC_BACKFILL_FAILURE_TOTAL = "price_tick_backfill_failure_total";
+	private static final String METRIC_BACKFILL_SUCCESS_RATE = "price_tick_backfill_success_rate";
 
 	private final OkxPriceTickBackfillService okxPriceTickBackfillService;
 	private final Executor backfillExecutor;
@@ -39,6 +42,8 @@ public class PriceTickBackfillDispatchService {
 	private final Set<String> pendingInstIds = ConcurrentHashMap.newKeySet();
 	private final Semaphore runningPermits;
 	private final int globalMaxConcurrent;
+	private final AtomicLong successCount = new AtomicLong(0L);
+	private final AtomicLong failedCount = new AtomicLong(0L);
 
 	public PriceTickBackfillDispatchService(
 		OkxPriceTickBackfillService okxPriceTickBackfillService,
@@ -52,6 +57,8 @@ public class PriceTickBackfillDispatchService {
 		this.backfillProperties = backfillProperties;
 		this.globalMaxConcurrent = resolveGlobalMaxConcurrent(backfillProperties);
 		this.runningPermits = new Semaphore(this.globalMaxConcurrent, true);
+		Gauge.builder(METRIC_BACKFILL_SUCCESS_RATE, this, PriceTickBackfillDispatchService::backfillSuccessRate)
+			.register(meterRegistry);
 		log.info("price.tick.backfill.dispatch.init globalMaxConcurrent={}", this.globalMaxConcurrent);
 	}
 
@@ -117,6 +124,7 @@ public class PriceTickBackfillDispatchService {
 				params.sleepMs()
 			);
 			incrementDispatchCounter(trigger, "success");
+			successCount.incrementAndGet();
 			recordBackfillDuration(trigger, "success", startedMs);
 		} catch (InterruptedException ex) {
 			Thread.currentThread().interrupt();
@@ -127,6 +135,7 @@ public class PriceTickBackfillDispatchService {
 		} catch (Exception ex) {
 			String reason = classifyFailureReason(ex);
 			incrementDispatchCounter(trigger, "failed");
+			failedCount.incrementAndGet();
 			recordFailure(trigger, "run", reason);
 			recordBackfillDuration(trigger, "failed", startedMs);
 			log.warn("price.tick.backfill.async.failed instId={} trigger={} reason={} error={}",
@@ -227,6 +236,16 @@ public class PriceTickBackfillDispatchService {
 			return "unknown";
 		}
 		return trigger.trim().toLowerCase(Locale.ROOT);
+	}
+
+	private double backfillSuccessRate() {
+		long success = successCount.get();
+		long failed = failedCount.get();
+		long finished = success + failed;
+		if (finished <= 0L) {
+			return 0D;
+		}
+		return (double) success / (double) finished;
 	}
 
 	private record BackfillParams(

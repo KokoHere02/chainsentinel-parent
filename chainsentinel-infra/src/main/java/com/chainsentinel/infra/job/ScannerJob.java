@@ -2,7 +2,9 @@ package com.chainsentinel.infra.job;
 
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.TimeUnit;
+import java.time.Instant;
 
 import com.chainsentinel.infra.config.ScannerProperties;
 import com.chainsentinel.core.service.ScannerService;
@@ -25,6 +27,7 @@ public class ScannerJob {
 	private static final String METRIC_JOB_RUN_TOTAL = "chainsentinel_job_run_total";
 	private static final String METRIC_JOB_RUN_DURATION = "chainsentinel_job_run_duration";
 	private static final String METRIC_JOB_RUNNING = "chainsentinel_job_running";
+	private static final String METRIC_JOB_LAST_SUCCESS_TIMESTAMP = "chainsentinel_job_last_success_timestamp_seconds";
 	private static final String JOB_TAG = "scanner";
 
 	private final ScannerService scannerService;
@@ -32,12 +35,16 @@ public class ScannerJob {
 	private final MeterRegistry meterRegistry;
 	private final AtomicBoolean running = new AtomicBoolean(false);
 	private final AtomicInteger runningGauge = new AtomicInteger(0);
+	private final AtomicLong lastSuccessEpochSeconds = new AtomicLong(0L);
 
 	public ScannerJob(ScannerService scannerService, ScannerProperties scannerProperties, MeterRegistry meterRegistry) {
 		this.scannerService = scannerService;
 		this.scannerProperties = scannerProperties;
 		this.meterRegistry = meterRegistry;
 		Gauge.builder(METRIC_JOB_RUNNING, runningGauge, AtomicInteger::get)
+			.tag("job", JOB_TAG)
+			.register(meterRegistry);
+		Gauge.builder(METRIC_JOB_LAST_SUCCESS_TIMESTAMP, lastSuccessEpochSeconds, AtomicLong::get)
 			.tag("job", JOB_TAG)
 			.register(meterRegistry);
 	}
@@ -57,6 +64,7 @@ public class ScannerJob {
 		String status = "success";
 		try {
 			int inserted = scannerService.runOnce();
+			lastSuccessEpochSeconds.set(Instant.now().getEpochSecond());
 			log.info("scanner.job.done inserted={}", inserted);
 		} catch (Exception ex) {
 			status = "failed";

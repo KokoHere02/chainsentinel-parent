@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.TimeUnit;
 
 import com.chainsentinel.core.service.PriceSnapshotService;
@@ -43,6 +44,7 @@ public class PriceIngestJob {
 	private static final String METRIC_JOB_RUN_TOTAL = "chainsentinel_job_run_total";
 	private static final String METRIC_JOB_RUN_DURATION = "chainsentinel_job_run_duration";
 	private static final String METRIC_JOB_RUNNING = "chainsentinel_job_running";
+	private static final String METRIC_JOB_LAST_SUCCESS_TIMESTAMP = "chainsentinel_job_last_success_timestamp_seconds";
 	private static final String JOB_TAG = "price_ingest";
 
 	private final PriceService priceService;
@@ -54,6 +56,7 @@ public class PriceIngestJob {
 	private final MeterRegistry meterRegistry;
 	private final AtomicBoolean running = new AtomicBoolean(false);
 	private final AtomicInteger runningGauge = new AtomicInteger(0);
+	private final AtomicLong lastSuccessEpochSeconds = new AtomicLong(0L);
 
 	public PriceIngestJob(
 		PriceService priceService,
@@ -72,6 +75,9 @@ public class PriceIngestJob {
 		this.priceIngestProperties = priceIngestProperties;
 		this.meterRegistry = meterRegistry;
 		Gauge.builder(METRIC_JOB_RUNNING, runningGauge, AtomicInteger::get)
+			.tag("job", JOB_TAG)
+			.register(meterRegistry);
+		Gauge.builder(METRIC_JOB_LAST_SUCCESS_TIMESTAMP, lastSuccessEpochSeconds, AtomicLong::get)
 			.tag("job", JOB_TAG)
 			.register(meterRegistry);
 	}
@@ -103,6 +109,7 @@ public class PriceIngestJob {
 					success++;
 				}
 			}
+			lastSuccessEpochSeconds.set(Instant.now().getEpochSecond());
 			log.info("price.ingest.job.done success={} total={}", success, total);
 		} catch (Exception ex) {
 			status = "failed";

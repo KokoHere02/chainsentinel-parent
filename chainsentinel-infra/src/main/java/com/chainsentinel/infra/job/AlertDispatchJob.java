@@ -3,9 +3,11 @@ package com.chainsentinel.infra.job;
 import com.chainsentinel.core.service.AlertDispatchService;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,17 +21,22 @@ public class AlertDispatchJob {
 	private static final String METRIC_JOB_RUN_TOTAL = "chainsentinel_job_run_total";
 	private static final String METRIC_JOB_RUN_DURATION = "chainsentinel_job_run_duration";
 	private static final String METRIC_JOB_RUNNING = "chainsentinel_job_running";
+	private static final String METRIC_JOB_LAST_SUCCESS_TIMESTAMP = "chainsentinel_job_last_success_timestamp_seconds";
 	private static final String JOB_TAG = "alert_dispatch";
 
 	private final AlertDispatchService alertDispatchService;
 	private final MeterRegistry meterRegistry;
 	private final AtomicBoolean running = new AtomicBoolean(false);
 	private final AtomicInteger runningGauge = new AtomicInteger(0);
+	private final AtomicLong lastSuccessEpochSeconds = new AtomicLong(0L);
 
 	public AlertDispatchJob(AlertDispatchService alertDispatchService, MeterRegistry meterRegistry) {
 		this.alertDispatchService = alertDispatchService;
 		this.meterRegistry = meterRegistry;
 		Gauge.builder(METRIC_JOB_RUNNING, runningGauge, AtomicInteger::get)
+			.tag("job", JOB_TAG)
+			.register(meterRegistry);
+		Gauge.builder(METRIC_JOB_LAST_SUCCESS_TIMESTAMP, lastSuccessEpochSeconds, AtomicLong::get)
 			.tag("job", JOB_TAG)
 			.register(meterRegistry);
 	}
@@ -46,6 +53,7 @@ public class AlertDispatchJob {
 		String status = "success";
 		try {
 			int sent = alertDispatchService.dispatchPending();
+			lastSuccessEpochSeconds.set(Instant.now().getEpochSecond());
 			log.info("alert.dispatch.job.done sent={}", sent);
 		} catch (Exception ex) {
 			status = "failed";
