@@ -13,6 +13,8 @@ import java.util.NoSuchElementException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -136,6 +138,15 @@ public class DefaultPriceProviderConfigService implements PriceProviderConfigSer
 	}
 
 	private void refreshRuntimeCache() {
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					priceProviderRuntimeConfig.refreshCache();
+				}
+			});
+			return;
+		}
 		priceProviderRuntimeConfig.refreshCache();
 	}
 
