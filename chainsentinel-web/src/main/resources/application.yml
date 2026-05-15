@@ -50,4 +50,15 @@ chainsentinel:
     sandbox-only: ${CHAINSENTINEL_TRADE_SANDBOX_ONLY:true}
     max-order-quantity: ${CHAINSENTINEL_TRADE_MAX_ORDER_QUANTITY:}
     max-order-notional: ${CHAINSENTINEL_TRADE_MAX_ORDER_NOTIONAL:}
-
+  price:
+    market-data:
+      gateway:
+        enabled: ${PRICE_MARKET_DATA_GATEWAY_ENABLED:false}
+        provider-name: ${PRICE_MARKET_DATA_GATEWAY_PROVIDER_NAME:market_gateway}
+        base-url: ${PRICE_MARKET_DATA_GATEWAY_BASE_URL:http://localhost:18080}
+        timeout-ms: ${PRICE_MARKET_DATA_GATEWAY_TIMEOUT_MS:3000}
+        internal-token-header-name: ${PRICE_MARKET_DATA_GATEWAY_INTERNAL_TOKEN_HEADER:X-Internal-Token}
+        internal-token: ${PRICE_MARKET_DATA_GATEWAY_INTERNAL_TOKEN:}
+        aliases:
+          - market_gateway
+          - gateway

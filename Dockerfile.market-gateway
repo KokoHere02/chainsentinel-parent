@@ -10,11 +10,11 @@ COPY chainsentinel-price/pom.xml chainsentinel-price/pom.xml
 COPY chainsentinel-web/pom.xml chainsentinel-web/pom.xml
 COPY chainsentinel-market-gateway/pom.xml chainsentinel-market-gateway/pom.xml
 
-RUN mvn -pl chainsentinel-web -am -DskipTests dependency:go-offline
+RUN mvn -pl chainsentinel-market-gateway -am -DskipTests dependency:go-offline
 
 COPY . .
 
-RUN mvn -pl chainsentinel-web -am -DskipTests package
+RUN mvn -pl chainsentinel-market-gateway -am -DskipTests package
 
 FROM eclipse-temurin:17-jre-jammy
 
@@ -22,12 +22,12 @@ WORKDIR /app
 
 RUN useradd -r -u 10001 appuser
 
-COPY --from=builder /workspace/chainsentinel-web/target/chainsentinel-web-*.jar /app/app.jar
+COPY --from=builder /workspace/chainsentinel-market-gateway/target/chainsentinel-market-gateway-*-exec.jar /app/app.jar
 
 ENV SPRING_PROFILES_ACTIVE=prod
 ENV TZ=Asia/Shanghai
 
-EXPOSE 8080
+EXPOSE 18080
 
 USER appuser
 
