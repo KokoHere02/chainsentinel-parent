@@ -1,0 +1,16 @@
+server:
+  port: 18080
+
+chainsentinel:
+  market-gateway:
+    security:
+      internal-token:
+        enabled: false
+        header-name: X-Internal-Token
+        token: ""
+    noop-provider:
+      enabled: true
+  price:
+    market-data:
+      gateway:
+        enabled: false

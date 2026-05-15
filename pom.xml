@@ -17,6 +17,7 @@
         <module>chainsentinel-infra</module>
         <module>chainsentinel-price</module>
         <module>chainsentinel-web</module>
+        <module>chainsentinel-market-gateway</module>
     </modules>
 
     <properties>

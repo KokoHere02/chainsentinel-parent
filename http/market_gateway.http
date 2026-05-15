@@ -1,0 +1,26 @@
+### Market Gateway health
+GET http://localhost:18080/api/v1/market/health
+
+### Market Gateway providers
+GET http://localhost:18080/api/v1/market/providers
+
+### OKX latest quote through Market Gateway
+GET http://localhost:18080/api/v1/market/quotes/latest?provider=okx&instType=SPOT&symbol=BTC&quoteSymbol=USDT
+X-Request-Id: gateway-demo-quote
+
+### OKX order book through Market Gateway
+GET http://localhost:18080/api/v1/market/order-book?provider=okx&instId=BTC-USDT&depth=20
+X-Request-Id: gateway-demo-depth
+
+### OKX recent public trades through Market Gateway
+GET http://localhost:18080/api/v1/market/trades/recent?provider=okx&instId=BTC-USDT&limit=20
+X-Request-Id: gateway-demo-trades
+
+### OKX klines through Market Gateway
+GET http://localhost:18080/api/v1/market/klines?provider=okx&instId=BTC-USDT&bar=1m&limit=100
+X-Request-Id: gateway-demo-klines
+
+### Same quote when internal token is enabled on gateway
+GET http://localhost:18080/api/v1/market/quotes/latest?provider=okx&instType=SPOT&symbol=BTC&quoteSymbol=USDT
+X-Request-Id: gateway-demo-auth
+X-Internal-Token: change-me
