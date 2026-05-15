@@ -9,8 +9,8 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
-import com.chainsentinel.price.provider.okx.OkxApiClient;
-import com.chainsentinel.price.provider.okx.dto.OkxHistoryCandle;
+import com.chainsentinel.price.api.PublicMarketDataClient;
+import com.chainsentinel.price.api.dto.PriceHistoryCandle;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -29,7 +29,7 @@ import org.mockito.quality.Strictness;
 class OkxPriceTickBackfillServiceConcurrencyTest {
 
 	@Mock
-	private OkxApiClient okxApiClient;
+	private PublicMarketDataClient marketDataClient;
 
 	@Mock
 	private PriceTickPersistenceService priceTickPersistenceService;
@@ -39,15 +39,15 @@ class OkxPriceTickBackfillServiceConcurrencyTest {
 		CountDownLatch entered = new CountDownLatch(1);
 		CountDownLatch release = new CountDownLatch(1);
 
-		when(okxApiClient.fetchHistoryCandles(eq("BTC-USDT"), any(), anyLong(), anyInt())).thenAnswer(invocation -> {
+		when(marketDataClient.getHistoryCandles(eq("BTC-USDT"), any(), anyLong(), anyInt())).thenAnswer(invocation -> {
 			entered.countDown();
 			if (!release.await(3, TimeUnit.SECONDS)) {
 				throw new IllegalStateException("test timeout waiting release");
 			}
-			return List.<OkxHistoryCandle>of();
+			return List.<PriceHistoryCandle>of();
 		});
 
-		OkxPriceTickBackfillService service = new OkxPriceTickBackfillService(okxApiClient, priceTickPersistenceService);
+		OkxPriceTickBackfillService service = new OkxPriceTickBackfillService(marketDataClient, priceTickPersistenceService);
 		ExecutorService executor = Executors.newSingleThreadExecutor();
 		try {
 			Future<?> first = executor.submit(() -> service.backfill("BTC-USDT", 1L, 2L, "1m", 100, 1, 0));
@@ -72,7 +72,7 @@ class OkxPriceTickBackfillServiceConcurrencyTest {
 		CountDownLatch btcEntered = new CountDownLatch(1);
 		CountDownLatch btcRelease = new CountDownLatch(1);
 
-		when(okxApiClient.fetchHistoryCandles(any(), any(), anyLong(), anyInt())).thenAnswer(invocation -> {
+		when(marketDataClient.getHistoryCandles(any(), any(), anyLong(), anyInt())).thenAnswer(invocation -> {
 			String instId = invocation.getArgument(0, String.class);
 			if ("BTC-USDT".equals(instId)) {
 				btcEntered.countDown();
@@ -80,10 +80,10 @@ class OkxPriceTickBackfillServiceConcurrencyTest {
 					throw new IllegalStateException("test timeout waiting btc release");
 				}
 			}
-			return List.<OkxHistoryCandle>of();
+			return List.<PriceHistoryCandle>of();
 		});
 
-		OkxPriceTickBackfillService service = new OkxPriceTickBackfillService(okxApiClient, priceTickPersistenceService);
+		OkxPriceTickBackfillService service = new OkxPriceTickBackfillService(marketDataClient, priceTickPersistenceService);
 		ExecutorService executor = Executors.newFixedThreadPool(2);
 		try {
 			Future<OkxPriceTickBackfillService.BackfillResult> first = executor.submit(

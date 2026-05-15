@@ -5,11 +5,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
+import com.chainsentinel.price.api.PublicMarketDataClient;
+import com.chainsentinel.price.api.PublicMarketDataClientRouter;
 import com.chainsentinel.price.api.dto.PriceOrderBook;
 import com.chainsentinel.price.api.dto.PriceOrderBookLevel;
 import com.chainsentinel.price.api.dto.PricePublicTrade;
-import com.chainsentinel.price.provider.okx.OkxApiClient;
-import com.chainsentinel.price.provider.okx.dto.OkxOrderBookResponse;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
@@ -22,12 +22,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class DefaultPriceMarketDataServiceTest {
 
 	@Mock
-	private OkxApiClient okxApiClient;
+	private PublicMarketDataClient marketDataClient;
 
 	@Test
 	void shouldReturnOrderBookFromOkx() {
-		when(okxApiClient.fetchOrderBook(eq("BTC-USDT"), eq(20))).thenReturn(Optional.of(
-			new OkxOrderBookResponse(
+		when(marketDataClient.supportsProvider("okx")).thenReturn(true);
+		when(marketDataClient.getOrderBook(eq("BTC-USDT"), eq(20))).thenReturn(Optional.of(
+			new PriceOrderBook(
+				"okx",
 				"BTC-USDT",
 				1700000000000L,
 				1001L,
@@ -37,7 +39,7 @@ class DefaultPriceMarketDataServiceTest {
 			)
 		));
 
-		DefaultPriceMarketDataService service = new DefaultPriceMarketDataService(okxApiClient);
+		DefaultPriceMarketDataService service = new DefaultPriceMarketDataService(new PublicMarketDataClientRouter(List.of(marketDataClient)));
 		PriceOrderBook result = service.getOrderBook("okx", "BTC-USDT", 20);
 
 		assertEquals("okx", result.provider());
@@ -49,11 +51,12 @@ class DefaultPriceMarketDataServiceTest {
 
 	@Test
 	void shouldReturnRecentTradesFromOkx() {
-		when(okxApiClient.fetchRecentPublicTrades(eq("BTC-USDT"), eq(10))).thenReturn(List.of(
+		when(marketDataClient.supportsProvider("okx_ws")).thenReturn(true);
+		when(marketDataClient.getRecentPublicTrades(eq("BTC-USDT"), eq(10))).thenReturn(List.of(
 			new PricePublicTrade("okx", "BTC-USDT", "1001", new BigDecimal("70100.1"), new BigDecimal("0.01"), "buy", 1700000000000L)
 		));
 
-		DefaultPriceMarketDataService service = new DefaultPriceMarketDataService(okxApiClient);
+		DefaultPriceMarketDataService service = new DefaultPriceMarketDataService(new PublicMarketDataClientRouter(List.of(marketDataClient)));
 		List<PricePublicTrade> result = service.getRecentPublicTrades("okx_ws", "BTC-USDT", 10);
 
 		assertEquals(1, result.size());
@@ -63,7 +66,7 @@ class DefaultPriceMarketDataServiceTest {
 
 	@Test
 	void shouldRejectUnsupportedProvider() {
-		DefaultPriceMarketDataService service = new DefaultPriceMarketDataService(okxApiClient);
+		DefaultPriceMarketDataService service = new DefaultPriceMarketDataService(new PublicMarketDataClientRouter(List.of(marketDataClient)));
 
 		assertThrows(IllegalArgumentException.class, () -> service.getOrderBook("binance", "BTC-USDT", 20));
 	}

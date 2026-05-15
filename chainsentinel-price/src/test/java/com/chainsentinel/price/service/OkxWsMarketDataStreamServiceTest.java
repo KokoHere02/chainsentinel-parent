@@ -8,11 +8,11 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.chainsentinel.price.api.PublicMarketDataClient;
+import com.chainsentinel.price.api.PublicMarketDataClientRouter;
 import com.chainsentinel.price.api.dto.PriceOrderBook;
 import com.chainsentinel.price.api.dto.PriceOrderBookLevel;
 import com.chainsentinel.price.config.PriceProviderRuntimeConfig;
-import com.chainsentinel.price.provider.okx.OkxApiClient;
-import com.chainsentinel.price.provider.okx.dto.OkxOrderBookResponse;
 import com.chainsentinel.price.stream.PriceOrderBookEvent;
 import java.math.BigDecimal;
 import java.util.List;
@@ -33,11 +33,16 @@ class OkxWsMarketDataStreamServiceTest {
 	private ApplicationEventPublisher eventPublisher;
 
 	@Mock
-	private OkxApiClient okxApiClient;
+	private PublicMarketDataClient marketDataClient;
 
 	@Test
 	void shouldBuildOrderBookFromSnapshotAndApplyDelta() {
-		OkxWsMarketDataStreamService service = new OkxWsMarketDataStreamService(runtimeConfig, eventPublisher, okxApiClient);
+		when(marketDataClient.supportsProvider("okx")).thenReturn(true);
+		OkxWsMarketDataStreamService service = new OkxWsMarketDataStreamService(
+			runtimeConfig,
+			eventPublisher,
+			new PublicMarketDataClientRouter(List.of(marketDataClient))
+		);
 
 		service.handleMessageForTest("""
 			{"arg":{"channel":"books","instId":"BTC-USDT"},"action":"snapshot","data":[
@@ -68,8 +73,10 @@ class OkxWsMarketDataStreamServiceTest {
 
 	@Test
 	void shouldRecoverFromRestSnapshotWhenSequenceBreaks() {
-		when(okxApiClient.fetchOrderBook(eq("BTC-USDT"), eq(400))).thenReturn(Optional.of(
-			new OkxOrderBookResponse(
+		when(marketDataClient.supportsProvider("okx")).thenReturn(true);
+		when(marketDataClient.getOrderBook(eq("BTC-USDT"), eq(400))).thenReturn(Optional.of(
+			new PriceOrderBook(
+				"okx",
 				"BTC-USDT",
 				1700000002000L,
 				20L,
@@ -79,7 +86,11 @@ class OkxWsMarketDataStreamServiceTest {
 			)
 		));
 
-		OkxWsMarketDataStreamService service = new OkxWsMarketDataStreamService(runtimeConfig, eventPublisher, okxApiClient);
+		OkxWsMarketDataStreamService service = new OkxWsMarketDataStreamService(
+			runtimeConfig,
+			eventPublisher,
+			new PublicMarketDataClientRouter(List.of(marketDataClient))
+		);
 
 		service.handleMessageForTest("""
 			{"arg":{"channel":"books","instId":"BTC-USDT"},"action":"snapshot","data":[
@@ -99,13 +110,15 @@ class OkxWsMarketDataStreamServiceTest {
 		assertEquals("101.5", snapshot.asks().get(0).price().toPlainString());
 		assertEquals("101.4", snapshot.bids().get(0).price().toPlainString());
 
-		verify(okxApiClient).fetchOrderBook("BTC-USDT", 400);
+		verify(marketDataClient).getOrderBook("BTC-USDT", 400);
 	}
 
 	@Test
 	void shouldRecoverFromRestSnapshotWhenChecksumMismatch() {
-		when(okxApiClient.fetchOrderBook(eq("BTC-USDT"), eq(400))).thenReturn(Optional.of(
-			new OkxOrderBookResponse(
+		when(marketDataClient.supportsProvider("okx")).thenReturn(true);
+		when(marketDataClient.getOrderBook(eq("BTC-USDT"), eq(400))).thenReturn(Optional.of(
+			new PriceOrderBook(
+				"okx",
 				"BTC-USDT",
 				1700000003000L,
 				30L,
@@ -115,7 +128,11 @@ class OkxWsMarketDataStreamServiceTest {
 			)
 		));
 
-		OkxWsMarketDataStreamService service = new OkxWsMarketDataStreamService(runtimeConfig, eventPublisher, okxApiClient);
+		OkxWsMarketDataStreamService service = new OkxWsMarketDataStreamService(
+			runtimeConfig,
+			eventPublisher,
+			new PublicMarketDataClientRouter(List.of(marketDataClient))
+		);
 
 		service.handleMessageForTest("""
 			{"arg":{"channel":"books","instId":"BTC-USDT"},"action":"snapshot","data":[
@@ -129,6 +146,6 @@ class OkxWsMarketDataStreamServiceTest {
 		assertEquals("102.0", snapshot.asks().get(0).price().toPlainString());
 		assertEquals("101.9", snapshot.bids().get(0).price().toPlainString());
 
-		verify(okxApiClient).fetchOrderBook("BTC-USDT", 400);
+		verify(marketDataClient).getOrderBook("BTC-USDT", 400);
 	}
 }

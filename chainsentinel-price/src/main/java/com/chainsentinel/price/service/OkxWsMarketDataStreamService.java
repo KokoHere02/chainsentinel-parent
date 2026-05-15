@@ -1,14 +1,14 @@
 package com.chainsentinel.price.service;
 
 import com.chainsentinel.price.api.PriceMarketStreamService;
+import com.chainsentinel.price.api.PublicMarketDataClient;
+import com.chainsentinel.price.api.PublicMarketDataClientRouter;
 import com.chainsentinel.price.api.dto.PriceMarketChannel;
 import com.chainsentinel.price.api.dto.PriceMarketSubscription;
 import com.chainsentinel.price.api.dto.PriceOrderBook;
 import com.chainsentinel.price.api.dto.PriceOrderBookLevel;
 import com.chainsentinel.price.api.dto.PricePublicTrade;
 import com.chainsentinel.price.config.PriceProviderRuntimeConfig;
-import com.chainsentinel.price.provider.okx.OkxApiClient;
-import com.chainsentinel.price.provider.okx.dto.OkxOrderBookResponse;
 import com.chainsentinel.price.stream.PriceOrderBookEvent;
 import com.chainsentinel.price.stream.PricePublicTradeEvent;
 import com.chainsentinel.price.stream.ws.SimpleWebSocketClient;
@@ -49,7 +49,7 @@ public class OkxWsMarketDataStreamService implements PriceMarketStreamService {
 
 	private final PriceProviderRuntimeConfig runtimeConfig;
 	private final ApplicationEventPublisher eventPublisher;
-	private final OkxApiClient okxApiClient;
+	private final PublicMarketDataClient marketDataClient;
 	private final ObjectMapper objectMapper = new ObjectMapper();
 	private final SimpleWebSocketClient client = new SimpleWebSocketClient(Duration.ofSeconds(10));
 	private final Set<PriceMarketSubscription> desiredSubscriptions = ConcurrentHashMap.newKeySet();
@@ -64,11 +64,11 @@ public class OkxWsMarketDataStreamService implements PriceMarketStreamService {
 	public OkxWsMarketDataStreamService(
 		PriceProviderRuntimeConfig runtimeConfig,
 		ApplicationEventPublisher eventPublisher,
-		OkxApiClient okxApiClient
+		PublicMarketDataClientRouter marketDataClientRouter
 	) {
 		this.runtimeConfig = runtimeConfig;
 		this.eventPublisher = eventPublisher;
-		this.okxApiClient = okxApiClient;
+		this.marketDataClient = marketDataClientRouter.resolve(PROVIDER_NAME);
 	}
 
 	@Override
@@ -284,7 +284,7 @@ public class OkxWsMarketDataStreamService implements PriceMarketStreamService {
 		if (instId == null || instId.isBlank()) {
 			return;
 		}
-		okxApiClient.fetchOrderBook(instId, REST_RECOVERY_DEPTH).ifPresentOrElse(response -> {
+		marketDataClient.getOrderBook(instId, REST_RECOVERY_DEPTH).ifPresentOrElse(response -> {
 			OrderBookState state = orderBooksByInst.computeIfAbsent(instId, ignored -> new OrderBookState(instId));
 			synchronized (state) {
 				state.replace(response);
@@ -437,7 +437,7 @@ public class OkxWsMarketDataStreamService implements PriceMarketStreamService {
 			this.ts = ts > 0 ? ts : null;
 		}
 
-		private void replace(OkxOrderBookResponse response) {
+		private void replace(PriceOrderBook response) {
 			asks.clear();
 			bids.clear();
 			merge(asks, response.asks());

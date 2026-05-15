@@ -1,8 +1,8 @@
 package com.chainsentinel.infra.service;
 
 import com.chainsentinel.infra.entity.PriceTickEntity;
-import com.chainsentinel.price.provider.okx.OkxApiClient;
-import com.chainsentinel.price.provider.okx.dto.OkxHistoryCandle;
+import com.chainsentinel.price.api.PublicMarketDataClient;
+import com.chainsentinel.price.api.dto.PriceHistoryCandle;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,15 +20,15 @@ public class OkxPriceTickBackfillService {
 	private static final String PROVIDER_NAME = "okx_ws";
 	private static final String INST_TYPE = "SPOT";
 
-	private final OkxApiClient okxApiClient;
+	private final PublicMarketDataClient marketDataClient;
 	private final PriceTickPersistenceService priceTickPersistenceService;
 	private final Set<String> runningInstIds = ConcurrentHashMap.newKeySet();
 
 	public OkxPriceTickBackfillService(
-		OkxApiClient okxApiClient,
+		PublicMarketDataClient marketDataClient,
 		PriceTickPersistenceService priceTickPersistenceService
 	) {
-		this.okxApiClient = okxApiClient;
+		this.marketDataClient = marketDataClient;
 		this.priceTickPersistenceService = priceTickPersistenceService;
 	}
 
@@ -94,7 +94,7 @@ public class OkxPriceTickBackfillService {
 
 	private boolean processSingleRound(NormalizedRequest request, BackfillState state) {
 		state.rounds++;
-		List<OkxHistoryCandle> candles = okxApiClient.fetchHistoryCandles(
+		List<PriceHistoryCandle> candles = marketDataClient.getHistoryCandles(
 			request.normalizedInstId(),
 			request.bar(),
 			state.cursorAfter,
@@ -120,11 +120,11 @@ public class OkxPriceTickBackfillService {
 		return !sleepInterrupted(request.sleepMs(), state);
 	}
 
-	private RoundPreparedData prepareRoundData(NormalizedRequest request, List<OkxHistoryCandle> candles) {
+	private RoundPreparedData prepareRoundData(NormalizedRequest request, List<PriceHistoryCandle> candles) {
 		List<PriceTickEntity> entities = new ArrayList<>();
 		long oldestTs = Long.MAX_VALUE;
 		long newestTs = Long.MIN_VALUE;
-		for (OkxHistoryCandle candle : candles) {
+		for (PriceHistoryCandle candle : candles) {
 			if (candle == null || candle.ts() <= 0 || candle.closePrice() == null) {
 				continue;
 			}
@@ -138,7 +138,7 @@ public class OkxPriceTickBackfillService {
 		return new RoundPreparedData(entities, oldestTs, newestTs);
 	}
 
-	private PriceTickEntity toPriceTickEntity(NormalizedRequest request, OkxHistoryCandle candle) {
+	private PriceTickEntity toPriceTickEntity(NormalizedRequest request, PriceHistoryCandle candle) {
 		PriceTickEntity entity = new PriceTickEntity();
 		entity.setProviderName(PROVIDER_NAME);
 		entity.setInstType(INST_TYPE);

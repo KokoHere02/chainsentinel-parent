@@ -1,13 +1,13 @@
 package com.chainsentinel.price.provider.okx;
 
+import com.chainsentinel.price.api.PublicMarketDataClient;
+import com.chainsentinel.price.api.PublicMarketDataClientRouter;
 import com.chainsentinel.price.api.dto.PriceInstType;
 import com.chainsentinel.price.api.dto.PriceQuery;
 import com.chainsentinel.price.api.dto.PriceQuote;
 import com.chainsentinel.price.config.PriceProviderRuntimeConfig;
 import com.chainsentinel.price.provider.PriceProvider;
-import com.chainsentinel.price.provider.okx.dto.OkxTickerResponse;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.math.BigDecimal;
 import java.util.EnumSet;
 import java.util.Optional;
 import java.util.Set;
@@ -29,12 +29,16 @@ public class OkxPriceProvider implements PriceProvider {
 	);
 
 	private final PriceProviderRuntimeConfig runtimeConfig;
-	private final OkxApiClient okxApiClient;
+	private final PublicMarketDataClient marketDataClient;
 	private final MeterRegistry meterRegistry;
 
-	public OkxPriceProvider(PriceProviderRuntimeConfig runtimeConfig, OkxApiClient okxApiClient, MeterRegistry meterRegistry) {
+	public OkxPriceProvider(
+		PriceProviderRuntimeConfig runtimeConfig,
+		PublicMarketDataClientRouter marketDataClientRouter,
+		MeterRegistry meterRegistry
+	) {
 		this.runtimeConfig = runtimeConfig;
-		this.okxApiClient = okxApiClient;
+		this.marketDataClient = marketDataClientRouter.resolve(name());
 		this.meterRegistry = meterRegistry;
 	}
 
@@ -64,29 +68,13 @@ public class OkxPriceProvider implements PriceProvider {
 			return Optional.empty();
 		}
 
-		String instId = query.normalizedInstId();
-		Optional<OkxTickerResponse> responseOpt = okxApiClient.fetchTicker(instId);
-		if (responseOpt.isEmpty()) {
+		Optional<PriceQuote> quote = marketDataClient.getQuote(query);
+		if (quote.isEmpty()) {
 			meterRegistry.counter("price_fetch_total", "provider", name(), "status", "failed").increment();
 			return Optional.empty();
 		}
 
-		OkxTickerResponse response = responseOpt.get();
-		if (!"0".equals(response.getCode()) || response.getData() == null || response.getData().isEmpty()) {
-			meterRegistry.counter("price_fetch_total", "provider", name(), "status", "failed").increment();
-			return Optional.empty();
-		}
-
-		OkxTickerResponse.OkxTickerData first = response.getData().get(0);
-		PriceQuote quote = new PriceQuote(
-			query.symbol().toUpperCase(),
-			query.quoteSymbol().toUpperCase(),
-			new BigDecimal(first.getLast()),
-			Long.parseLong(first.getTs()),
-			name(),
-			false
-		);
 		meterRegistry.counter("price_fetch_total", "provider", name(), "status", "success").increment();
-		return Optional.of(quote);
+		return quote;
 	}
 }
